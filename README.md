@@ -17,6 +17,7 @@ not yet on a console. See "How it was verified".
    or `Project+/BOOST.GCT` from the Project+ 3.2.1 Wii download). It checks
    the file, adds the driver and saves `USBGameCubeAdapter-<version>.7z`.
    Everything happens in the browser; the file isn't uploaded anywhere.
+   (Confirmed: the launcher accepts the patcher's `.7z` on a real console.)
 2. Copy that `.7z` to `sd:/Project+/launcher/addons/`.
 3. Start the Project+ launcher, open **Addons**, and turn on
    **USB GameCube Adapter (Wii U)**. The launcher backs up your original

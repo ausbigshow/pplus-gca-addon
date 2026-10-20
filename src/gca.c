@@ -149,6 +149,9 @@ static PADStatus gcn_data[GCN_CONTROLLER_COUNT];
 static volatile u32 gcn_data_written;
 static volatile u32 gcn_adapter_id = (u32)-1;
 static volatile u8 adapter_live = 0;
+/* A real unplug also shows up as poll errors, so retry only a few times. */
+#define POLL_RETRIES 3
+static u8 poll_errors;
 
 /* Origin calibration, per port. */
 static u8 origin_valid[GCN_CONTROLLER_COUNT];
@@ -584,7 +587,7 @@ static s32 onDevUsbParams5(s32 ret, void *usr) {
 
 static s32 onDevUsbInit(s32 ret, void *usr) {
   (void)usr;
-  if (ret >= 0) { DIAG_STAGE(7); rumble_reset(); ret = sendPoll(); }
+  if (ret >= 0) { DIAG_STAGE(7); rumble_reset(); poll_errors = 0; ret = sendPoll(); }
   if (ret) { DIAG_ERR(10, ret); gcn_adapter_id = (u32)-1; }
   return 0;
 }
@@ -599,6 +602,7 @@ static inline u8 clamp_u8(int v) {
 static s32 onDevUsbPoll(s32 ret, void *usr) {
   (void)usr;
   if (ret >= 0) {
+    poll_errors = 0;
     if (poll_msg_buffer[0] == 0x21) {
       u32 now = mftb();
       u32 isr = isr_disable();
@@ -668,6 +672,8 @@ static s32 onDevUsbPoll(s32 ret, void *usr) {
       isr_restore(isr);
     }
     ret = sendPoll();
+  } else if (++poll_errors < POLL_RETRIES) {
+    ret = sendPoll(); /* one-off glitch: keep the adapter */
   }
   if (ret) { DIAG_ERR(11, ret); gcn_adapter_id = (u32)-1; adapter_live = 0; }
   return 0;

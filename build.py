@@ -30,10 +30,9 @@ if not CROSS:
 
 BOOST_LOAD = 0x80550010          # MultiGCT.asm: BOOST.GCT is read to here
 CODELIST_START = 0x80566528      # gc.txt: main codelist begins here
-GCT_HEADER = bytes.fromhex("00D0C0DE00D0C0DE")
 GCT_END = bytes.fromhex("F000000000000000")
-VERSION = "1.1"                  # add-on version shown in the launcher
-STOCK_BOOST_MD5 = None           # filled from the input for the manifest note
+VERSION = "1.2"                  # add-on version shown in the launcher
+STOCK_BOOST_MD5 = "a8b8be65aa8c63625235476df542d2e3"  # Project+ 3.2.1 Wii
 
 CFLAGS = [
     "-mcpu=750", "-m32", "-mbig-endian", "-O2", "-ffreestanding", "-fno-builtin",
@@ -99,10 +98,9 @@ def main():
     args = ap.parse_args()
 
     stock = Path(args.boost).read_bytes()
-    if stock[:8] != GCT_HEADER or stock[-8:] != GCT_END:
-        sys.exit("input is not a GCT ending in F0000000 00000000")
-    if b"WUPGCA" in stock or bytes.fromhex("47434131") in stock:
-        sys.exit("input already contains the adapter code; use the stock BOOST.GCT")
+    # The blob address and the published patcher are pinned to this exact file.
+    if hashlib.md5(stock).hexdigest() != STOCK_BOOST_MD5:
+        sys.exit(f"input is not the stock Project+ 3.2.1 Wii BOOST.GCT (md5 {STOCK_BOOST_MD5})")
 
     insert_at = len(stock) - 8
     c0_addr = BOOST_LOAD + insert_at

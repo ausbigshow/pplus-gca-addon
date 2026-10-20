@@ -306,6 +306,13 @@ class Brawl:
         self.call(cb, 0x25, usr)
         self.pump(4)
 
+    def fail_poll(self):
+        """Timed mode: complete the outstanding poll with an IOS error."""
+        cb, usr, _ = self.pending_poll
+        self.pending_poll = None
+        self.call(cb, -7, usr)
+        self.pump(4)
+
     def read(self):
         r = self.call(GCA_PADREAD, STATUS)
         return r, self.read_status()
@@ -409,6 +416,7 @@ def run_basic(version):
     calls = g.padread_calls
     r, s = g.read()
     check(r == PADREAD_MARKER and g.padread_calls == calls + 1, "adapter unplugged: back to real PADRead")
+    check(not g.queue and g.diag()[2] == 11, "unplugged: polling stops after the retries")
     g.call(GCA_MOTOR, 0, 1)
     g.pump(4)
     check(g.motor_calls == 1 and g.last_motor == (0, 1),
@@ -468,6 +476,13 @@ def run_latch(version):
     _, s = g.read()
     check(s[1]["err"] == 0 and (s[1]["sx"], s[1]["sy"], s[1]["tl"]) == (0, 0, 0),
           f"next report calibrates to 0 ({s[1]})")
+
+    # One failed poll (USB glitch) must not drop the adapter.
+    g.fail_poll()
+    check(g.pending_poll is not None, "poll error: driver polls again")
+    g.deliver(pkt(REST, REST))
+    r, _ = g.read()
+    check(r == 0, "after a one-off poll error the adapter is still used")
 
     # Adapter goes stale (no reports for >1.5 s): stock path, latch cleared.
     g.deliver(pkt(with_buttons(REST, 0x01), REST))

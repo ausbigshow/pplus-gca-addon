@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+"""Build the Project+ USB GameCube adapter add-on.
+
+Takes the stock Project+ 3.2.1 Wii BOOST.GCT, appends one Gecko C0 code whose
+body is the compiled driver (linked for the exact address it lands at once
+BOOST.GCT is loaded to 0x80550010), and packages it as a launcher add-on.
+
+Usage: python3 build.py <stock BOOST.GCT> [-o out_dir]
+"""
+import argparse
+import hashlib
+import shutil
+import struct
+import subprocess
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+SRC = HERE / "src"
+CROSS = "powerpc-linux-gnu-"
+
+BOOST_LOAD = 0x80550010          # MultiGCT.asm: BOOST.GCT is read to here
+CODELIST_START = 0x80566528      # gc.txt: main codelist begins here
+GCT_HEADER = bytes.fromhex("00D0C0DE00D0C0DE")
+GCT_END = bytes.fromhex("F000000000000000")
+STOCK_BOOST_MD5 = None           # filled from the input for the manifest note
+
+CFLAGS = [
+    "-mcpu=750", "-m32", "-mbig-endian", "-O2", "-ffreestanding", "-fno-builtin",
+    "-fno-tree-loop-distribute-patterns", "-nostdlib", "-fno-pic", "-fno-PIC",
+    "-mno-relocatable", "-msdata=none", "-G0", "-fno-asynchronous-unwind-tables",
+    "-fno-exceptions", "-fno-stack-protector", "-mno-altivec", "-msoft-float",
+    "-Wall", "-Wextra", "-Wno-unused-parameter",
+]
+
+INFO_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<addon>
+  <title>USB GameCube Adapter (Wii U)</title>
+  <code>WUPGCA</code>
+  <version>{version}</version>
+  <files>
+    <file
+      source="BOOST.GCT"
+      destination="sd:/Project+/BOOST.GCT"
+      md5="{md5}" />
+  </files>
+</addon>
+"""
+
+
+def run(cmd, **kw):
+    r = subprocess.run(cmd, capture_output=True, text=True, **kw)
+    if r.returncode:
+        sys.exit(f"command failed: {' '.join(map(str, cmd))}\n{r.stdout}{r.stderr}")
+    return r.stdout
+
+
+def build_blob(base: int, build: Path) -> tuple[bytes, dict]:
+    build.mkdir(parents=True, exist_ok=True)
+    objs = []
+    for src in ("entry.S", "gca.c"):
+        obj = build / (src.split(".")[0] + ".o")
+        run([CROSS + "gcc", *CFLAGS, "-c", str(SRC / src), "-o", str(obj)])
+        objs.append(str(obj))
+    elf = build / "gca.elf"
+    run([CROSS + "ld", "-m", "elf32ppc", "-T", str(SRC / "link.ld"),
+         f"--defsym=BASE={base:#x}", "--no-undefined", "-e", "_entry",
+         "-Map", str(build / "gca.map"), *objs, "-o", str(elf)])
+    # Nothing may be left undefined or relocated at runtime.
+    if run([CROSS + "nm", "-u", str(elf)]).strip():
+        sys.exit("undefined symbols in blob")
+    syms = {}
+    for line in run([CROSS + "nm", str(elf)]).splitlines():
+        a, t, n = line.split()
+        syms[n] = int(a, 16)
+    binf = build / "gca.bin"
+    run([CROSS + "objcopy", "-O", "binary", "-j", ".text", "-j", ".data", str(elf), str(binf)])
+    blob = binf.read_bytes()
+    blob += b"\0" * (-len(blob) % 8)
+    (build / "gca.dis").write_text(run([CROSS + "objdump", "-d", str(elf)]))
+    return blob, syms
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("boost", help="stock Project+ 3.2.1 BOOST.GCT")
+    ap.add_argument("-o", "--out", default=str(HERE / "dist"))
+    ap.add_argument("--version", default="1.0")
+    args = ap.parse_args()
+
+    stock = Path(args.boost).read_bytes()
+    if stock[:8] != GCT_HEADER or stock[-8:] != GCT_END:
+        sys.exit("input is not a GCT ending in F0000000 00000000")
+    if b"WUPGCA" in stock or bytes.fromhex("47434131") in stock:
+        sys.exit("input already contains the adapter code; use the stock BOOST.GCT")
+
+    insert_at = len(stock) - 8
+    c0_addr = BOOST_LOAD + insert_at
+    blob_addr = c0_addr + 8
+    blob, syms = build_blob(blob_addr, HERE / "build")
+    assert syms["_entry"] == blob_addr, "entry is not at the start of the C0 body"
+
+    lines = len(blob) // 8
+    code = struct.pack(">II", 0xC0000000, lines) + blob
+    out_gct = stock[:insert_at] + code + GCT_END
+
+    end = BOOST_LOAD + len(out_gct)
+    if end > CODELIST_START:
+        sys.exit(f"BOOST.GCT would overrun the codelist: ends {end:#x}")
+
+    outdir = Path(args.out)
+    outdir.mkdir(parents=True, exist_ok=True)
+    (outdir / "BOOST.GCT").write_bytes(out_gct)
+    md5 = hashlib.md5(out_gct).hexdigest()
+
+    # Launcher add-on: non-solid 7z, one LZMA1 stream per file (see README).
+    addon = outdir / "USBGameCubeAdapter.7z"
+    addon.unlink(missing_ok=True)
+    stage = HERE / "build" / "stage"
+    shutil.rmtree(stage, ignore_errors=True)
+    stage.mkdir(parents=True)
+    (stage / "info.xml").write_text(INFO_XML.format(version=args.version, md5=md5))
+    (stage / "BOOST.GCT").write_bytes(out_gct)
+    run(["7z", "a", "-t7z", "-m0=LZMA", "-ms=off", str(addon), "info.xml", "BOOST.GCT"],
+        cwd=stage)
+
+    report = {
+        "stock_size": len(stock),
+        "stock_md5": hashlib.md5(stock).hexdigest(),
+        "c0_addr": hex(c0_addr),
+        "blob_addr": hex(blob_addr),
+        "blob_size": len(blob),
+        "gca_PADRead": hex(syms["gca_PADRead"]),
+        "gca_install": hex(syms["gca_install"]),
+        "gca_diag": hex(syms["gca_diag"]),
+        "new_size": len(out_gct),
+        "boost_end": hex(end),
+        "headroom": CODELIST_START - end,
+        "md5": md5,
+    }
+    for k, v in report.items():
+        print(f"{k:12} {v}")
+    (outdir / "build-report.txt").write_text(
+        "\n".join(f"{k}: {v}" for k, v in report.items()) + "\n")
+
+
+if __name__ == "__main__":
+    main()

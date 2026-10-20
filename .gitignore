@@ -1,0 +1,19 @@
+# Build output
+build/
+dist/*.7z
+dist/BOOST.GCT
+
+# Stock Project+ files (not ours to redistribute)
+BOOST.GCT
+stock/
+*.GCT
+Project+*.zip
+Project+ v3.2.1 (Wii)/
+
+# Hardware captures can be large; keep only the curated ones in tests/data
+*.pcap
+
+# Python
+__pycache__/
+*.pyc
+.venv/

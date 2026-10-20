@@ -17,3 +17,6 @@ Project+ v3.2.1 (Wii)/
 __pycache__/
 *.pyc
 .venv/
+
+# Local agent skills (third-party, MIT; see .claude/skills/SOURCE.txt)
+.claude/

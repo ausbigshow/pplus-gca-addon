@@ -9,6 +9,7 @@ Usage: python3 build.py <stock BOOST.GCT> [-o out_dir]
 """
 import argparse
 import hashlib
+import os
 import shutil
 import struct
 import subprocess
@@ -17,12 +18,19 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 SRC = HERE / "src"
-CROSS = "powerpc-linux-gnu-"
+# Any 32-bit PowerPC GCC works (we pass -mcpu=750). Override with GCA_CROSS,
+# e.g. GCA_CROSS=/path/to/bin/powerpc-buildroot-linux-gnu- or devkitPPC's
+# powerpc-eabi-.
+CROSS = os.environ.get("GCA_CROSS")
+if not CROSS:
+    CROSS = next((c for c in ("powerpc-linux-gnu-", "powerpc-eabi-", "powerpc-linux-")
+                  if shutil.which(c + "gcc")), "powerpc-linux-gnu-")
 
 BOOST_LOAD = 0x80550010          # MultiGCT.asm: BOOST.GCT is read to here
 CODELIST_START = 0x80566528      # gc.txt: main codelist begins here
 GCT_HEADER = bytes.fromhex("00D0C0DE00D0C0DE")
 GCT_END = bytes.fromhex("F000000000000000")
+VERSION = "1.1"                  # add-on version shown in the launcher
 STOCK_BOOST_MD5 = None           # filled from the input for the manifest note
 
 CFLAGS = [
@@ -85,7 +93,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("boost", help="stock Project+ 3.2.1 BOOST.GCT")
     ap.add_argument("-o", "--out", default=str(HERE / "dist"))
-    ap.add_argument("--version", default="1.0")
+    ap.add_argument("--version", default=VERSION)
     args = ap.parse_args()
 
     stock = Path(args.boost).read_bytes()
@@ -131,6 +139,7 @@ def main():
         "blob_addr": hex(blob_addr),
         "blob_size": len(blob),
         "gca_PADRead": hex(syms["gca_PADRead"]),
+        "gca_PADControlMotor": hex(syms["gca_PADControlMotor"]),
         "gca_install": hex(syms["gca_install"]),
         "gca_diag": hex(syms["gca_diag"]),
         "new_size": len(out_gct),
@@ -139,7 +148,7 @@ def main():
         "md5": md5,
     }
     for k, v in report.items():
-        print(f"{k:12} {v}")
+        print(f"{k:20} {v}")
     (outdir / "build-report.txt").write_text(
         "\n".join(f"{k}: {v}" for k, v in report.items()) + "\n")
 

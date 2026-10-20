@@ -157,6 +157,9 @@ def main():
                     .replace("/*@@CONFIG@@*/", config_js))
     patcher_path = outdir / "gca-patcher.html"
     patcher_path.write_text(patcher_html)
+    # GitHub Pages serves docs/ from main: https://ausbigshow.github.io/pplus-gca-addon/
+    (HERE / "docs").mkdir(exist_ok=True)
+    (HERE / "docs" / "index.html").write_text(patcher_html)
     (outdir / "patcher-config.json").write_text(json.dumps(cfg, indent=2) + "\n")
 
     report = {

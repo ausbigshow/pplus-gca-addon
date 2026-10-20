@@ -12,7 +12,7 @@ not yet on a console. See "How it was verified".
 
 ## Install
 
-1. Open `gca-patcher.html` (from the release) in a browser and pick your
+1. Open the patcher at **https://ausbigshow.github.io/pplus-gca-addon/** and pick your
    stock `BOOST.GCT` (`sd:/Project+/BOOST.GCT` before any add-on replaced it,
    or `Project+/BOOST.GCT` from the Project+ 3.2.1 Wii download). It checks
    the file, adds the driver and saves `USBGameCubeAdapter-<version>.7z`.
@@ -162,8 +162,9 @@ node tests/test_patcher.mjs path/to/stock/BOOST.GCT /tmp/out.7z
 ```
 
 `build.py` writes `dist/USBGameCubeAdapter.7z` (contains the patched
-`BOOST.GCT`, for your own testing only) and `dist/gca-patcher.html` (contains
-only the driver; this is what gets released).
+`BOOST.GCT`, for your own testing only) and the patcher page (contains only
+the driver) to `dist/gca-patcher.html` and `docs/index.html`. GitHub Pages
+serves `docs/` from `main`, so committing `docs/index.html` publishes it.
 
 Any 32-bit PowerPC GCC works. `build.py` looks for `powerpc-linux-gnu-`,
 `powerpc-eabi-` (devkitPPC) or `powerpc-linux-`; set `GCA_CROSS` to a full

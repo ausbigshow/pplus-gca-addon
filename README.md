@@ -3,9 +3,12 @@
 Lets the official Wii U GameCube Controller Adapter (WUP-028, or a clone in
 "Wii U" mode) work **in game** in Project+ 3.2.1 on a Wii U's vWii.
 
-**Status: experimental, not yet tested on real hardware.** The compiled code
-has been run end to end on an emulated PowerPC CPU against a mock Brawl and
-mock USB stack (both USB interface versions); see "How it was verified".
+**Status (v1.1):** v1.0 is confirmed working on a vWii (disc boot, Loader
+IOS 251 = d2x base 58, so the `/dev/usb/hid` v5 path) with a Mayflash adapter
+in Wii U mode, all four ports. v1.1 adds press latching, rumble and the
+screen-dimming fix; these have been tested on an emulated PowerPC against a
+mock Brawl and USB stack, and against reports captured from a real adapter, but
+not yet on a console. See "How it was verified".
 
 ## Install
 
@@ -13,8 +16,8 @@ mock USB stack (both USB interface versions); see "How it was verified".
 2. Start the Project+ launcher, open **Addons**, and turn on
    **USB GameCube Adapter (Wii U)**. The launcher backs up your original
    `BOOST.GCT` and swaps in the patched one. Turning the add-on off restores it.
-3. Plug the adapter's **black** cable into the Wii U. The grey cable only
-   powers rumble, which this version doesn't use.
+3. Plug the adapter's **black** cable into the Wii U. Plug the **grey** cable
+   in too if you want rumble (it only powers the motors).
 4. Launch the game as usual (disc).
 
 Requires the stock Project+ **3.2.1** Wii `BOOST.GCT`
@@ -31,7 +34,11 @@ Requires the stock Project+ **3.2.1** Wii `BOOST.GCT`
   when a controller connects, so don't touch the sticks or triggers while
   plugging in. Hold **X + Y + Start for 3 seconds** to recalibrate.
 - Adapter and controller hot-plugging work.
-- **No rumble** in this version.
+- Quick taps aren't lost: the adapter reports about twice per game frame, and
+  a button pressed and released between two game frames is still seen for one
+  frame. Holding and releasing a button behaves exactly as before.
+- Rumble works when the game turns it on (grey cable needed).
+- Adapter input keeps the screen from dimming, like a real GameCube controller.
 
 ## If something goes wrong
 
@@ -42,10 +49,22 @@ Requires the stock Project+ **3.2.1** Wii `BOOST.GCT`
   tried and what happened.
 - Keep a Wii Remote connected while testing so you can always navigate.
 
-For anyone with a memory viewer: the driver writes a status block at the
-`gca_diag` address in `build-report.txt`: magic `GCA1`, stage, error site,
-error code. Stage `0x10` means installed; `7` means polling the adapter;
-`0xEE` means the expected `PADRead` call wasn't found and nothing was patched.
+For anyone with a memory viewer: the driver writes a status block of twelve
+32-bit words at the `gca_diag` address in `build-report.txt`:
+
+| Word | Meaning |
+|---|---|
+| 0 | magic `GCA1` |
+| 1 | stage: `0x10` installed, `7` polling the adapter, `0xEE` `PADRead` call not found (nothing patched) |
+| 2, 3 | last error site and code (`13` = a rumble message failed) |
+| 4 | adapter reports received. Read it twice a known time apart for the console's poll rate (the PC sees 125/s) |
+| 5 | game reads (`PADRead` calls), about 60/s |
+| 6 | rumble messages sent |
+| 7 | game reads where the latch added a press that would otherwise have been missed |
+| 8 | number of `PADControlMotor` calls redirected; `0xEE` = its code didn't match, rumble off |
+| 9 | `1` = screen-dimming reset in use; `0xEE` = its code didn't match, off |
+| 10 | rumble requests from the game |
+| 11 | rumble message errors |
 
 ## How it works
 
@@ -56,6 +75,34 @@ error code. Stage `0x10` means installed; `7` means polling the adapter;
   the single `bl PADRead` inside `gfPadSystem::updateLowGC` (`0x80029578`) and
   redirects it to the driver. If that call isn't where it's expected, it
   patches nothing.
+- **Latch:** each adapter report ORs newly pressed buttons (released → pressed
+  since the previous report) into a per-port latch; the next game read adds
+  them and clears it. Only new presses are latched, so a button held across a
+  read and released before the next is reported released on time. Unplugged
+  ports, and fallback to the stock `PADRead`, clear the latch.
+- **Rumble:** `PADControlMotor` isn't named in the symbol map. `0x802162A4`
+  (size `0xB8`) is the function right after `PADRead` and matches the Wii SDK's
+  pad.c layout exactly (`PADRead 0x2E0`, `PADControlMotor 0xB8`, `SPEC0/1
+  0x118`, `SPEC2 0x580`, ...; checked against the Mario Kart Wii and Super
+  Paper Mario symbol maps). The decomp has no code for `gfPadSystem`'s motor
+  functions, so at runtime the driver checks the function's SDK signature
+  (the same 4 words at `+0x64` that Chadderz's module matches) and that it ends
+  in `blr`, then redirects every `bl` to it in Brawl's `.text`. If the
+  signature doesn't match, nothing is patched. The redirect still calls the
+  real function, records the wanted state per port, and the poll loop sends
+  `0x11` + one byte per port (v4 `INTERRUPT_OUT` / v5 `INTERRUPT` ioctlv)
+  alongside a poll, with at most one rumble message in flight. A lost reply
+  is retried after 64 polls.
+- **Screen dimming:** the SDK's `PADRead` calls `__VIResetSIIdle` when input
+  changes; with only adapter input, nothing does. `0x801EA088` is
+  `__VIResetSIIdle` by the same size/order match against vi.c
+  (`VIResetDimmingCount 0x14`, `__VIResetRFIdle 0x10`, `__VIResetSIIdle 0x10`,
+  `WaitMicroTime 0x98`). The driver calls it on input change (same thresholds
+  as the SDK), only after checking it is a branch-free 4-instruction leaf with
+  the same shape as its twin `__VIResetRFIdle`.
+- **Hot-plug:** when a controller is plugged into the adapter, the first
+  report for that port has every analog byte 0. The driver waits for the next
+  report before calibrating.
 - The driver talks to the adapter through IOS `/dev/usb/hid`, using either the
   v4 interface (IOS 37-57 based) or the v5 interface (IOS 58 based), with the
   same asynchronous flow as Chadderz's BrainSlug module. The v5 interface
@@ -71,21 +118,54 @@ error code. Stage `0x10` means installed; `7` means polling the adapter;
 big-endian) against a mock Brawl and checks that:
 
 - the `C0` entry preserves every register the codehandler relies on
-- only the `bl PADRead` is patched, and re-running changes nothing
+- only the `bl PADRead` and the `bl PADControlMotor`s are patched (near-miss
+  branches aren't), and re-running changes nothing
 - the real `PADRead` is used until adapter data arrives
 - input is decoded and origin-calibrated correctly on both USB interface versions
+- taps between game reads are latched for exactly one read; held buttons
+  release on time; unplugged or stale ports don't replay old presses
+- rumble requests reach the mock adapter as `11 xx xx xx xx` on v4 and v5, one
+  message in flight, latest state wins, lost replies retried
+- a wrong `PADControlMotor` signature or `__VIResetSIIdle` shape patches or
+  calls nothing; with no adapter everything goes to the stock functions
 - unplugging the adapter falls back to the real `PADRead`
+- **real adapter data:** reports captured from a Mayflash adapter on a PC
+  (`tests/data/*.gcap`) are replayed at their recorded timing against a
+  59.94 Hz game, at full rate and at half rate. Every press reaches the game,
+  no button is ever reported that wasn't held or newly pressed, and sticks rest
+  at 0 after calibration. Without the latch, the same data loses a 16 ms tap.
 
-It cannot check real IOS behaviour, timing, or Brawl's handling of the data.
-That needs a console.
+PC measurements (Mayflash, Wii U mode, `tools/adapter_probe.py`): 125.0
+reports/s, 8.000 ms median interval, 0.014 ms standard deviation, no timeouts,
+over 30 s. The fastest real taps were 16 ms (two reports), shorter than one
+60 Hz frame (16.7 ms). The console's own rate is in `gca_diag` word 4.
+
+It cannot check real IOS behaviour, timing on the console, or Brawl's handling
+of the data. That needs a console. The rumble and dimming addresses are checked
+by code signature at runtime, because no Brawl binary was available to trace
+the callers.
 
 ## Building
 
 ```
 sudo apt install gcc-powerpc-linux-gnu p7zip-full
-pip install unicorn py7zr
+pip install unicorn py7zr pyusb
 python3 build.py path/to/stock/BOOST.GCT
 python3 tests/emulate.py
+```
+
+Any 32-bit PowerPC GCC works. `build.py` looks for `powerpc-linux-gnu-`,
+`powerpc-eabi-` (devkitPPC) or `powerpc-linux-`; set `GCA_CROSS` to a full
+prefix otherwise, e.g. a Bootlin `powerpc-e300c3` toolchain:
+`GCA_CROSS=/path/to/bin/powerpc-buildroot-linux-gnu-`. The stock
+`BOOST.GCT` isn't in this repository (it isn't ours to redistribute).
+
+PC tools (adapter on the PC, nothing else claiming it):
+
+```
+python3 tools/adapter_probe.py measure -s 10 --save tests/data/new.gcap
+python3 tools/adapter_probe.py show
+python3 tools/adapter_probe.py rumble 1 -s 1
 ```
 
 ## Credits and licence

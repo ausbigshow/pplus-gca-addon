@@ -6,9 +6,8 @@ Lets the official Wii U GameCube Controller Adapter (WUP-028, or a clone in
 **Status (v1.1):** v1.0 is confirmed working on a vWii (disc boot, Loader
 IOS 251 = d2x base 58, so the `/dev/usb/hid` v5 path) with a Mayflash adapter
 in Wii U mode, all four ports. v1.1 adds press latching, rumble and the
-screen-dimming fix; these have been tested on an emulated PowerPC against a
-mock Brawl and USB stack, and against reports captured from a real adapter, but
-not yet on a console. See "How it was verified".
+screen-dimming fix, all confirmed on the same console, and is installed with
+the web patcher. See "How it was verified".
 
 ## Install
 

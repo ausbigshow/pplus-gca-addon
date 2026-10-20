@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>USB GameCube Adapter add-on patcher</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --fg: #0f172a;
+      --muted: #475569;
+      --card-bg: #ffffff;
+      --border: #cbd5e1;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --success-bg: #ecfdf5;
+      --success-border: #6ee7b7;
+      --success-fg: #065f46;
+      --error-bg: #fef2f2;
+      --error-border: #fca5a5;
+      --error-fg: #991b1b;
+      --focus-ring: #3b82f6;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f172a;
+        --fg: #f8fafc;
+        --muted: #94a3b8;
+        --card-bg: #1e293b;
+        --border: #334155;
+        --primary: #3b82f6;
+        --primary-hover: #60a5fa;
+        --success-bg: #064e3b;
+        --success-border: #047857;
+        --success-fg: #a7f3d0;
+        --error-bg: #7f1d1d;
+        --error-border: #b91c1c;
+        --error-fg: #fecaca;
+        --focus-ring: #60a5fa;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.5;
+      padding: 1.5rem 1rem;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      background: var(--card-bg);
+      padding: 1.75rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    h1 {
+      font-size: 1.4rem;
+      margin-bottom: 0.5rem;
+    }
+    .privacy-notice {
+      display: inline-block;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 1.25rem;
+    }
+    p, .instructions {
+      font-size: 0.95rem;
+      margin-bottom: 1rem;
+    }
+    .instructions code, .steps code {
+      font-size: 0.9em;
+      background: rgba(125, 125, 125, 0.15);
+      padding: 0.15em 0.35em;
+      border-radius: 4px;
+    }
+    .drop-zone {
+      position: relative;
+      border: 2px dashed var(--border);
+      border-radius: 6px;
+      padding: 1.75rem 1rem;
+      text-align: center;
+      cursor: pointer;
+      margin-bottom: 1.25rem;
+      transition: border-color 0.15s, background-color 0.15s;
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--primary);
+      background-color: rgba(59, 130, 246, 0.05);
+    }
+    .drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      cursor: pointer;
+    }
+    .drop-zone input[type="file"]:focus-visible + .file-label {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: 4px;
+      border-radius: 4px;
+    }
+    .file-label {
+      display: block;
+      font-weight: 500;
+      color: var(--primary);
+    }
+    .status {
+      padding: 0.75rem 1rem;
+      border-radius: 6px;
+      margin-bottom: 1.25rem;
+      font-size: 0.9rem;
+      border: 1px solid transparent;
+      word-break: break-word;
+    }
+    .status.info {
+      background: rgba(125, 125, 125, 0.08);
+      color: var(--fg);
+      border-color: var(--border);
+    }
+    .status.success {
+      background: var(--success-bg);
+      color: var(--success-fg);
+      border-color: var(--success-border);
+    }
+    .status.error {
+      background: var(--error-bg);
+      color: var(--error-fg);
+      border-color: var(--error-border);
+    }
+    .download-section {
+      margin-bottom: 1.5rem;
+    }
+    .btn {
+      display: inline-block;
+      width: 100%;
+      text-align: center;
+      background: var(--primary);
+      color: #ffffff;
+      padding: 0.75rem 1.25rem;
+      border-radius: 6px;
+      text-decoration: none;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      font-size: 1rem;
+      transition: background-color 0.15s;
+    }
+    .btn:hover {
+      background: var(--primary-hover);
+    }
+    .steps {
+      border-top: 1px solid var(--border);
+      padding-top: 1.25rem;
+      margin-top: 1rem;
+    }
+    .steps h2 {
+      font-size: 1.1rem;
+      margin-bottom: 0.5rem;
+    }
+    .steps ol {
+      padding-left: 1.25rem;
+      font-size: 0.9rem;
+    }
+    .steps li {
+      margin-bottom: 0.4rem;
+    }
+    footer {
+      border-top: 1px solid var(--border);
+      margin-top: 1.5rem;
+      padding-top: 1rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <h1>USB GameCube Adapter add-on patcher</h1>
+    <span class="privacy-notice">This file never leaves your computer. Patching runs entirely in your browser.</span>
+
+    <div class="instructions">
+      Pick your stock BOOST.GCT from <code>sd:/Project+/BOOST.GCT</code>, or from the fresh Project+ 3.2.1 Wii download, <em>before</em> any add-on replaced it.
+    </div>
+
+    <div id="drop-zone" class="drop-zone">
+      <input type="file" id="file-input" accept=".GCT,.gct,application/octet-stream" aria-describedby="status">
+      <label for="file-input" class="file-label">Select BOOST.GCT or drag &amp; drop it here</label>
+    </div>
+
+    <div id="status" class="status info" role="status" aria-live="polite">
+      Ready. Please select your stock BOOST.GCT.
+    </div>
+
+    <div id="download-section" class="download-section" hidden>
+      <a id="download-btn" class="btn" href="#" role="button" download="">Download Add-on</a>
+    </div>
+
+    <section class="steps">
+      <h2>Installation Steps</h2>
+      <ol>
+        <li>Copy the downloaded <code>.7z</code> file to <code>sd:/Project+/launcher/addons/</code>.</li>
+        <li>Insert your SD card into your Wii or Wii U and open the Project+ launcher.</li>
+        <li>Navigate to the <strong>Addons</strong> menu.</li>
+        <li>Enable <strong>USB GameCube Adapter (Wii U)</strong>.</li>
+      </ol>
+    </section>
+
+    <footer>
+      Driver adapted from Chadderz's MIT-licensed WUP-028 module &bull; LZMA-JS MIT &bull; <span id="version-label">v1.1</span>
+    </footer>
+  </main>
+
+  <script>
+/*@@LZMA@@*/
+/*@@PATCHER@@*/
+/*@@CONFIG@@*/
+
+(function () {
+  "use strict";
+
+  if (typeof CFG !== "undefined" && CFG.version) {
+    var vLabel = document.getElementById("version-label");
+    if (vLabel) vLabel.textContent = "v" + CFG.version;
+  }
+
+  var dropZone = document.getElementById("drop-zone");
+  var fileInput = document.getElementById("file-input");
+  var statusEl = document.getElementById("status");
+  var downloadSection = document.getElementById("download-section");
+  var downloadBtn = document.getElementById("download-btn");
+  var currentBlobUrl = null;
+
+  function setStatus(text, type) {
+    statusEl.textContent = text;
+    statusEl.className = "status " + (type || "info");
+  }
+
+  ["dragenter", "dragover"].forEach(function (evt) {
+    dropZone.addEventListener(evt, function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      dropZone.classList.add("dragover");
+    }, false);
+  });
+
+  ["dragleave", "drop"].forEach(function (evt) {
+    dropZone.addEventListener(evt, function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      dropZone.classList.remove("dragover");
+    }, false);
+  });
+
+  dropZone.addEventListener("drop", function (e) {
+    var files = e.dataTransfer && e.dataTransfer.files;
+    if (files && files.length > 0) {
+      handleFile(files[0]);
+    }
+  });
+
+  fileInput.addEventListener("change", function () {
+    if (fileInput.files && fileInput.files.length > 0) {
+      handleFile(fileInput.files[0]);
+    }
+  });
+
+  async function handleFile(file) {
+    if (!file) return;
+
+    downloadSection.hidden = true;
+    if (currentBlobUrl) {
+      URL.revokeObjectURL(currentBlobUrl);
+      currentBlobUrl = null;
+    }
+
+    setStatus("Reading file...", "info");
+
+    try {
+      var arrayBuffer = await file.arrayBuffer();
+      var bytes = new Uint8Array(arrayBuffer);
+
+      setStatus("Verifying and patching BOOST.GCT...", "info");
+
+      var res = await buildAddon(bytes, CFG);
+      if (!res.ok) {
+        setStatus(res.error || "Patch failed.", "error");
+        return;
+      }
+
+      var blob = new Blob([res.archive], { type: "application/x-7z-compressed" });
+      currentBlobUrl = URL.createObjectURL(blob);
+      var filename = "USBGameCubeAdapter-" + (CFG.version || "1.1") + ".7z";
+
+      downloadBtn.href = currentBlobUrl;
+      downloadBtn.download = filename;
+      downloadBtn.textContent = "Download " + filename;
+      downloadSection.hidden = false;
+
+      setStatus("Success! Patched BOOST.GCT generated and packaged.", "success");
+    } catch (err) {
+      setStatus("Error: " + (err.message || String(err)), "error");
+    }
+  }
+})();
+  </script>
+</body>
+</html>

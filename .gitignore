@@ -20,3 +20,5 @@ __pycache__/
 
 # Local agent skills (third-party, MIT; see .claude/skills/SOURCE.txt)
 .claude/
+dist/gca-patcher.html
+dist/patcher-config.json

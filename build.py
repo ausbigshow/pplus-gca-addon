@@ -8,7 +8,9 @@ BOOST.GCT is loaded to 0x80550010), and packages it as a launcher add-on.
 Usage: python3 build.py <stock BOOST.GCT> [-o out_dir]
 """
 import argparse
+import base64
 import hashlib
+import json
 import os
 import shutil
 import struct
@@ -127,10 +129,35 @@ def main():
     stage = HERE / "build" / "stage"
     shutil.rmtree(stage, ignore_errors=True)
     stage.mkdir(parents=True)
-    (stage / "info.xml").write_text(INFO_XML.format(version=args.version, md5=md5))
+    info_xml_content = INFO_XML.format(version=args.version, md5=md5)
+    (stage / "info.xml").write_text(info_xml_content)
     (stage / "BOOST.GCT").write_bytes(out_gct)
     run(["7z", "a", "-t7z", "-m0=LZMA", "-ms=off", str(addon), "info.xml", "BOOST.GCT"],
         cwd=stage)
+
+    # Browser-based patcher: inlines LZMA, patcher logic, and config into template.
+    tail = out_gct[insert_at:]
+    cfg = {
+        "version": args.version,
+        "stockSize": len(stock),
+        "stockSha256": hashlib.sha256(stock).hexdigest(),
+        "tailB64": base64.b64encode(tail).decode("ascii"),
+        "outSha256": hashlib.sha256(out_gct).hexdigest(),
+        "outMd5": md5,
+        "infoXml": info_xml_content,
+    }
+    template = (HERE / "patcher" / "template.html").read_text()
+    lzma_js = (HERE / "patcher" / "vendor" / "lzma-c-min.js").read_text()
+    patcher_js = (HERE / "patcher" / "patcher.js").read_text()
+    config_js = "const CFG = " + json.dumps(cfg, indent=2) + ";"
+
+    patcher_html = (template
+                    .replace("/*@@LZMA@@*/", lzma_js)
+                    .replace("/*@@PATCHER@@*/", patcher_js)
+                    .replace("/*@@CONFIG@@*/", config_js))
+    patcher_path = outdir / "gca-patcher.html"
+    patcher_path.write_text(patcher_html)
+    (outdir / "patcher-config.json").write_text(json.dumps(cfg, indent=2) + "\n")
 
     report = {
         "stock_size": len(stock),
@@ -146,6 +173,7 @@ def main():
         "boost_end": hex(end),
         "headroom": CODELIST_START - end,
         "md5": md5,
+        "patcher": str(patcher_path),
     }
     for k, v in report.items():
         print(f"{k:20} {v}")

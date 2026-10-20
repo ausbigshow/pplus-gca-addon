@@ -51,7 +51,8 @@ const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
 const htmlPath = path.join(rootDir, "dist/gca-patcher.html");
 assert(fs.existsSync(htmlPath), "dist/gca-patcher.html must exist");
 const html = fs.readFileSync(htmlPath, "utf8");
-assert(html.includes(cfg.tailB64), "gca-patcher.html must inline configuration");
+assert(cfg.versions.length > 0, "at least one version");
+for (const v of cfg.versions) assert(html.includes(v.tailB64), `gca-patcher.html must inline v${v.version}`);
 assert(!html.includes("/*@@LZMA@@*/"), "LZMA placeholder must be replaced");
 assert(!html.includes("/*@@PATCHER@@*/"), "PATCHER placeholder must be replaced");
 assert(!html.includes("/*@@CONFIG@@*/"), "CONFIG placeholder must be replaced");
@@ -82,15 +83,16 @@ if (fs.existsSync(distGctPath)) {
     "Error should tell user to restore stock file first");
 }
 
-// 4. Test valid stock file
-const resValid = await buildAddon(stockBytes, cfg);
-assert.strictEqual(resValid.ok, true, "Valid stock file must succeed: " + resValid.error);
-assert(resValid.gct instanceof Uint8Array, "Result must contain patched gct");
-assert(resValid.archive instanceof Uint8Array, "Result must contain 7z archive");
-
-const gctHash = await crypto.subtle.digest("SHA-256", resValid.gct);
-const gctSha256 = Buffer.from(gctHash).toString("hex");
-assert.strictEqual(gctSha256, cfg.outSha256, "Produced GCT SHA-256 must match cfg.outSha256");
+// 4. Test valid stock file, every offered version (newest is written out)
+let resValid;
+for (const v of [...cfg.versions].reverse()) {
+  resValid = await buildAddon(stockBytes, { ...cfg, ...v });
+  assert.strictEqual(resValid.ok, true, `v${v.version}: valid stock file must succeed: ` + resValid.error);
+  assert(resValid.archive instanceof Uint8Array, "Result must contain 7z archive");
+  const gctSha256 = Buffer.from(await crypto.subtle.digest("SHA-256", resValid.gct)).toString("hex");
+  assert.strictEqual(gctSha256, v.outSha256, `v${v.version}: produced GCT SHA-256 must match`);
+  console.log(`v${v.version}: ok (${resValid.archive.length} bytes)`);
+}
 
 // 5. Write produced archive to out path
 fs.mkdirSync(path.dirname(path.resolve(out7zPath)), { recursive: true });

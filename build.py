@@ -95,6 +95,8 @@ def main():
     ap.add_argument("boost", help="stock Project+ 3.2.1 BOOST.GCT")
     ap.add_argument("-o", "--out", default=str(HERE / "dist"))
     ap.add_argument("--version", default=VERSION)
+    ap.add_argument("--release", action="store_true",
+                    help="add this build to patcher/versions/ and the published patcher (docs/)")
     args = ap.parse_args()
 
     stock = Path(args.boost).read_bytes()
@@ -133,32 +135,44 @@ def main():
     run(["7z", "a", "-t7z", "-m0=LZMA", "-ms=off", str(addon), "info.xml", "BOOST.GCT"],
         cwd=stage)
 
-    # Browser-based patcher: inlines LZMA, patcher logic, and config into template.
-    tail = out_gct[insert_at:]
-    cfg = {
+    # Browser patcher: one entry per add-on version (only our appended bytes).
+    # patcher/versions/ holds the released, console-tested versions; the dist/
+    # page also offers this build, the docs/ (published) page only released ones.
+    entry = {
         "version": args.version,
-        "stockSize": len(stock),
-        "stockSha256": hashlib.sha256(stock).hexdigest(),
-        "tailB64": base64.b64encode(tail).decode("ascii"),
+        "tailB64": base64.b64encode(out_gct[insert_at:]).decode("ascii"),
         "outSha256": hashlib.sha256(out_gct).hexdigest(),
         "outMd5": md5,
         "infoXml": info_xml_content,
     }
-    template = (HERE / "patcher" / "template.html").read_text()
-    lzma_js = (HERE / "patcher" / "vendor" / "lzma-c-min.js").read_text()
-    patcher_js = (HERE / "patcher" / "patcher.js").read_text()
-    config_js = "const CFG = " + json.dumps(cfg, indent=2) + ";"
+    versions_dir = HERE / "patcher" / "versions"
+    if args.release:
+        (versions_dir / f"{args.version}.json").write_text(json.dumps(entry, indent=2) + "\n")
+    released = {e["version"]: e for e in
+                (json.loads(p.read_text()) for p in versions_dir.glob("*.json"))}
 
-    patcher_html = (template
-                    .replace("/*@@LZMA@@*/", lzma_js)
-                    .replace("/*@@PATCHER@@*/", patcher_js)
-                    .replace("/*@@CONFIG@@*/", config_js))
+    def patcher_page(versions):
+        cfg = {
+            "stockSize": len(stock),
+            "stockSha256": hashlib.sha256(stock).hexdigest(),
+            # Newest first; the page selects the first one by default.
+            "versions": sorted(versions.values(), reverse=True,
+                               key=lambda e: tuple(map(int, e["version"].split(".")))),
+        }
+        template = (HERE / "patcher" / "template.html").read_text()
+        html = (template
+                .replace("/*@@LZMA@@*/", (HERE / "patcher" / "vendor" / "lzma-c-min.js").read_text())
+                .replace("/*@@PATCHER@@*/", (HERE / "patcher" / "patcher.js").read_text())
+                .replace("/*@@CONFIG@@*/", "const CFG = " + json.dumps(cfg, indent=2) + ";"))
+        return html, cfg
+
+    patcher_html, cfg = patcher_page({**released, args.version: entry})
     patcher_path = outdir / "gca-patcher.html"
     patcher_path.write_text(patcher_html)
+    (outdir / "patcher-config.json").write_text(json.dumps(cfg, indent=2) + "\n")
     # GitHub Pages serves docs/ from main: https://ausbigshow.github.io/pplus-gca-addon/
     (HERE / "docs").mkdir(exist_ok=True)
-    (HERE / "docs" / "index.html").write_text(patcher_html)
-    (outdir / "patcher-config.json").write_text(json.dumps(cfg, indent=2) + "\n")
+    (HERE / "docs" / "index.html").write_text(patcher_page(released)[0])
 
     report = {
         "stock_size": len(stock),

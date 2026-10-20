@@ -75,6 +75,20 @@
       padding: 0.15em 0.35em;
       border-radius: 4px;
     }
+    .version-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    .version-row select {
+      font: inherit;
+      color: var(--fg);
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.35rem 0.5rem;
+    }
     .drop-zone {
       position: relative;
       border: 2px dashed var(--border);
@@ -186,6 +200,10 @@
       Pick your stock BOOST.GCT from <code>sd:/Project+/BOOST.GCT</code>, or from the fresh Project+ 3.2.1 Wii download, <em>before</em> any add-on replaced it.
     </div>
 
+    <div class="version-row">
+      <label for="version-select">Add-on version</label>
+      <select id="version-select"></select>
+    </div>
     <div id="drop-zone" class="drop-zone">
       <input type="file" id="file-input" accept=".GCT,.gct,application/octet-stream" aria-describedby="status">
       <label for="file-input" class="file-label">Select BOOST.GCT or drag &amp; drop it here</label>
@@ -210,7 +228,7 @@
     </section>
 
     <footer>
-      Driver adapted from Chadderz's MIT-licensed WUP-028 module &bull; LZMA-JS MIT &bull; <span id="version-label">v1.1</span>
+      Driver adapted from Chadderz's MIT-licensed WUP-028 module &bull; LZMA-JS MIT
     </footer>
   </main>
 
@@ -222,10 +240,17 @@
 (function () {
   "use strict";
 
-  if (typeof CFG !== "undefined" && CFG.version) {
-    var vLabel = document.getElementById("version-label");
-    if (vLabel) vLabel.textContent = "v" + CFG.version;
-  }
+  var versionSelect = document.getElementById("version-select");
+  CFG.versions.forEach(function (v, i) {
+    var opt = document.createElement("option");
+    opt.value = String(i);
+    opt.textContent = "v" + v.version + (i === 0 ? " (latest)" : "");
+    versionSelect.appendChild(opt);
+  });
+  var lastFile = null;
+  versionSelect.addEventListener("change", function () {
+    if (lastFile) handleFile(lastFile); // rebuild for the newly picked version
+  });
 
   var dropZone = document.getElementById("drop-zone");
   var fileInput = document.getElementById("file-input");
@@ -270,6 +295,8 @@
 
   async function handleFile(file) {
     if (!file) return;
+    lastFile = file;
+    var picked = CFG.versions[Number(versionSelect.value)];
 
     downloadSection.hidden = true;
     if (currentBlobUrl) {
@@ -285,7 +312,7 @@
 
       setStatus("Verifying and patching BOOST.GCT...", "info");
 
-      var res = await buildAddon(bytes, CFG);
+      var res = await buildAddon(bytes, Object.assign({}, CFG, picked));
       if (!res.ok) {
         setStatus(res.error || "Patch failed.", "error");
         return;
@@ -293,7 +320,7 @@
 
       var blob = new Blob([res.archive], { type: "application/x-7z-compressed" });
       currentBlobUrl = URL.createObjectURL(blob);
-      var filename = "USBGameCubeAdapter-" + (CFG.version || "1.1") + ".7z";
+      var filename = "USBGameCubeAdapter-" + picked.version + ".7z";
 
       downloadBtn.href = currentBlobUrl;
       downloadBtn.download = filename;

@@ -3,11 +3,13 @@
 Lets the official Wii U GameCube Controller Adapter (WUP-028, or a clone in
 "Wii U" mode) work **in game** in Project+ 3.2.1 on a Wii U's vWii.
 
-**Status (v1.1):** v1.0 is confirmed working on a vWii (disc boot, Loader
+**Status (v1.2):** v1.0 is confirmed working on a vWii (disc boot, Loader
 IOS 251 = d2x base 58, so the `/dev/usb/hid` v5 path) with a Mayflash adapter
 in Wii U mode, all four ports. v1.1 adds press latching, rumble and the
 screen-dimming fix, all confirmed on the same console, and is installed with
-the web patcher. See "How it was verified".
+the web patcher. v1.2 keeps the adapter working through one-off USB read
+errors (it used to stop until the adapter was replugged), also confirmed on
+console. See "How it was verified".
 
 ## Install
 
@@ -62,7 +64,7 @@ For anyone with a memory viewer: the driver writes a status block of twelve
 |---|---|
 | 0 | magic `GCA1` |
 | 1 | stage: `0x10` installed, `7` polling the adapter, `0xEE` `PADRead` call not found (nothing patched) |
-| 2, 3 | last error site and code (`13` = a rumble message failed) |
+| 2, 3 | last error site and code (`11` = adapter reads failed 3 times in a row, polling stopped; `13` = a rumble message failed) |
 | 4 | adapter reports received. Read it twice a known time apart for the console's poll rate (the PC sees 125/s) |
 | 5 | game reads (`PADRead` calls), about 60/s |
 | 6 | rumble messages sent |

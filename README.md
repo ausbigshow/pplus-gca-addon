@@ -137,7 +137,8 @@ big-endian) against a mock Brawl and checks that:
 
 PC measurements (Mayflash, Wii U mode, `tools/adapter_probe.py`): 125.0
 reports/s, 8.000 ms median interval, 0.014 ms standard deviation, no timeouts,
-over 30 s. The fastest real taps were 16 ms (two reports), shorter than one
+over 30 s. Sending `11 01 01 01 01` from the PC rumbled the controller
+(grey cable in). The fastest real taps were 16 ms (two reports), shorter than one
 60 Hz frame (16.7 ms). The console's own rate is in `gca_diag` word 4.
 
 It cannot check real IOS behaviour, timing on the console, or Brawl's handling

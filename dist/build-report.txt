@@ -11,3 +11,4 @@ new_size: 72800
 boost_end: 0x80561c70
 headroom: 18616
 md5: a9cf21659fe538c89e92b676083450ee
+patcher: gca-patcher.html

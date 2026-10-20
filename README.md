@@ -12,13 +12,18 @@ not yet on a console. See "How it was verified".
 
 ## Install
 
-1. Copy `USBGameCubeAdapter.7z` to `sd:/Project+/launcher/addons/`.
-2. Start the Project+ launcher, open **Addons**, and turn on
+1. Open `gca-patcher.html` (from the release) in a browser and pick your
+   stock `BOOST.GCT` (`sd:/Project+/BOOST.GCT` before any add-on replaced it,
+   or `Project+/BOOST.GCT` from the Project+ 3.2.1 Wii download). It checks
+   the file, adds the driver and saves `USBGameCubeAdapter-<version>.7z`.
+   Everything happens in the browser; the file isn't uploaded anywhere.
+2. Copy that `.7z` to `sd:/Project+/launcher/addons/`.
+3. Start the Project+ launcher, open **Addons**, and turn on
    **USB GameCube Adapter (Wii U)**. The launcher backs up your original
    `BOOST.GCT` and swaps in the patched one. Turning the add-on off restores it.
-3. Plug the adapter's **black** cable into the Wii U. Plug the **grey** cable
+4. Plug the adapter's **black** cable into the Wii U. Plug the **grey** cable
    in too if you want rumble (it only powers the motors).
-4. Launch the game as usual (disc).
+5. Launch the game as usual (disc).
 
 Requires the stock Project+ **3.2.1** Wii `BOOST.GCT`
 (md5 `a8b8be65aa8c63625235476df542d2e3`). If another add-on also replaces
@@ -153,7 +158,12 @@ sudo apt install gcc-powerpc-linux-gnu p7zip-full
 pip install unicorn py7zr pyusb
 python3 build.py path/to/stock/BOOST.GCT
 python3 tests/emulate.py
+node tests/test_patcher.mjs path/to/stock/BOOST.GCT /tmp/out.7z
 ```
+
+`build.py` writes `dist/USBGameCubeAdapter.7z` (contains the patched
+`BOOST.GCT`, for your own testing only) and `dist/gca-patcher.html` (contains
+only the driver; this is what gets released).
 
 Any 32-bit PowerPC GCC works. `build.py` looks for `powerpc-linux-gnu-`,
 `powerpc-eabi-` (devkitPPC) or `powerpc-linux-`; set `GCA_CROSS` to a full
@@ -169,7 +179,28 @@ python3 tools/adapter_probe.py show
 python3 tools/adapter_probe.py rumble 1 -s 1
 ```
 
+## AI disclosure
+
+This project was built with heavy use of AI coding assistants, directed and
+reviewed by the maintainer:
+
+- The driver, build script, emulator tests, PC tools and this README were
+  largely written by Anthropic's Claude (in Claude Code). Google's Gemini (via
+  Antigravity) wrote parts of the web patcher, which Claude then reviewed and
+  tested.
+- AI-found facts (Brawl addresses, SDK function identities) were checked
+  against the doldecomp/brawl symbol map and other decompilations. Where they
+  couldn't be fully confirmed, the driver checks the real code at runtime and
+  patches nothing if it doesn't match.
+- Testing on real hardware (vWii, Mayflash adapter) and the decision to release
+  were done by a human.
+
 ## Credits and licence
+
+MIT licence, see `LICENSE`. This repository and the patcher page contain no
+Project+ or Nintendo files: the patcher adds the driver to your own copy of
+Project+'s `BOOST.GCT`. The patcher bundles LZMA-JS by Nathan Rugg (MIT,
+`patcher/vendor/LICENSE`).
 
 Driver adapted from the WUP-028 BrainSlug module by Alex "Chadderz" Chadwick
 (MIT-style licence, reproduced in `src/gca.c`). Brawl addresses were checked

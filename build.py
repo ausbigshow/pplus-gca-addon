@@ -173,7 +173,7 @@ def main():
         "boost_end": hex(end),
         "headroom": CODELIST_START - end,
         "md5": md5,
-        "patcher": str(patcher_path),
+        "patcher": patcher_path.name,
     }
     for k, v in report.items():
         print(f"{k:20} {v}")

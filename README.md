@@ -43,12 +43,13 @@ codeset:
    `BOOST.txt`. The stock file has no newline at the end, so check the line
    above stays separate.
 3. Compile `BOOST.txt` as usual. Checked with GCTRealMate v0.2.6: stock
-   `BOOST.txt` plus this line builds, with 18144 bytes left before the
+   `BOOST.txt` plus this line builds, with 18088 bytes left before the
    codelist at `0x80566528`.
 
 This build is position-independent: on its first run it adds its own address
-to the addresses in its address table (entry.S), so it works wherever GCTRM
-places it. The C source lines are comments next to the instructions. Mnemonics
+to the addresses in its address table (entry.S), and it aligns its IOS
+buffers at run time, so it works wherever GCTRM places it. It has not been
+tested on a console yet. The C source lines are comments next to the instructions. Mnemonics
 GCTRM can't encode are written as `word` with the instruction in a comment.
 Don't also turn on the launcher add-on.
 
@@ -187,7 +188,8 @@ python3 tests/check_asm.py path/to/GCTRealMate path/to/stock/BOOST.GCT
 
 `check_asm.py` assembles `dist/USBGameCubeAdapter.asm` with GCTRealMate,
 checks the bytes match the compiled PIC build, then runs the emulator tests
-on it.
+on it at every 8-byte offset from a 32-byte boundary. `build.py` runs it
+itself when `GCTRM` is set to a GCTRealMate binary, and warns otherwise.
 
 `build.py` writes `dist/USBGameCubeAdapter.7z` (contains the patched
 `BOOST.GCT`, for your own testing only) and the patcher page (contains only

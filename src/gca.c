@@ -181,9 +181,6 @@ volatile u32 gca_diag[12] = { 0x47434131 /* 'GCA1' */ };
 #define DIAG_STAGE(x) (gca_diag[1] = (x))
 #define DIAG_ERR(m, e) (gca_diag[2] = (m), gca_diag[3] = (u32)(e))
 
-static u8 init_msg_buffer[32] IOS_ALIGN = { WUP_028_CMD_INIT };
-static u8 poll_msg_buffer[64] IOS_ALIGN;
-
 /*============================================================================*/
 /* CPU helpers                                                                */
 /*============================================================================*/
@@ -224,8 +221,6 @@ static void mem_zero(void *p, u32 n) {
 #define HID4_IOCTL_GET_VERSION 6
 #define HID4_VERSION 0x00040001
 
-static u32 hid4_devices[HID4_DEVICE_CHANGE_SIZE] IOS_ALIGN;
-
 struct interrupt_msg4 {
   u8 padding[16];
   u32 device;
@@ -234,12 +229,39 @@ struct interrupt_msg4 {
   void *ptr;
 };
 
-static struct interrupt_msg4 init_msg4 IOS_ALIGN = {
-  { 0 }, (u32)-1, WUP_028_ENDPOINT_OUT, 1, init_msg_buffer
-};
-static struct interrupt_msg4 poll_msg4 IOS_ALIGN = {
-  { 0 }, (u32)-1, WUP_028_ENDPOINT_IN, WUP_028_POLL_SIZE, poll_msg_buffer
-};
+/* Everything IOS reads or writes must be 32-byte aligned. The codeset (.asm)
+ * build can land on any 8-byte boundary, so the buffers live in one block
+ * that ios_bufs_init aligns at run time. */
+static struct ios_bufs {
+  u8 init_msg[32] IOS_ALIGN;
+  u8 poll_msg[64] IOS_ALIGN;
+  u8 rumble_msg[32] IOS_ALIGN;
+  u32 hid4_devices[HID4_DEVICE_CHANGE_SIZE] IOS_ALIGN;
+  struct interrupt_msg4 init_msg4 IOS_ALIGN, poll_msg4 IOS_ALIGN, rumble_msg4 IOS_ALIGN;
+  ioctlv hid5_argv[2] IOS_ALIGN, hid5_poll_argv[2] IOS_ALIGN, hid5_rumble_argv[2] IOS_ALIGN;
+} *ios;
+static u8 ios_raw[sizeof(struct ios_bufs) + 31];
+#define init_msg_buffer   (ios->init_msg)
+#define poll_msg_buffer   (ios->poll_msg)
+#define rumble_msg_buffer (ios->rumble_msg)
+#define hid4_devices      (ios->hid4_devices)
+#define init_msg4         (ios->init_msg4)
+#define poll_msg4         (ios->poll_msg4)
+#define rumble_msg4       (ios->rumble_msg4)
+#define hid5_argv         (ios->hid5_argv)
+#define hid5_poll_argv    (ios->hid5_poll_argv)
+#define hid5_rumble_argv  (ios->hid5_rumble_argv)
+
+static void ios_bufs_init(void) {
+  ios = (struct ios_bufs *)(((u32)ios_raw + 31) & ~31); /* ios_raw starts zeroed */
+  init_msg_buffer[0] = WUP_028_CMD_INIT;
+  rumble_msg_buffer[0] = WUP_028_CMD_RUMBLE;
+  init_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_OUT, 1, init_msg_buffer };
+  poll_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_IN, WUP_028_POLL_SIZE,
+                                       poll_msg_buffer };
+  rumble_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_OUT,
+                                         1 + GCN_CONTROLLER_COUNT, rumble_msg_buffer };
+}
 
 /*============================================================================*/
 /* /dev/usb/hid version 5                                                     */
@@ -264,8 +286,6 @@ struct hid5_device {
 /* These two MUST be in MEM2; claimed at runtime from the IPC buffer region. */
 static struct hid5_device *hid5_devices;
 static u32 *hid5_buffer;
-static ioctlv hid5_argv[2] IOS_ALIGN;
-static ioctlv hid5_poll_argv[2] IOS_ALIGN;
 
 /*
  * Claim MEM2 for v5 from the top of the SDK's IPC buffer region. Libraries
@@ -371,17 +391,12 @@ static int sendPoll5(ios_cb_t cb) {
  * the poll loop collapse into the latest state. */
 #define RUMBLE_STALL_POLLS 64 /* reply lost: retry after ~0.5 s of polls */
 
-static u8 rumble_msg_buffer[32] IOS_ALIGN = { WUP_028_CMD_RUMBLE };
 static volatile u8 rumble_want[GCN_CONTROLLER_COUNT];
 static u8 rumble_acked[GCN_CONTROLLER_COUNT];
 static u8 rumble_pending[GCN_CONTROLLER_COUNT];
 static u8 rumble_inflight;
 static u8 rumble_token;
 static u8 rumble_stall;
-static ioctlv hid5_rumble_argv[2] IOS_ALIGN;
-static struct interrupt_msg4 rumble_msg4 IOS_ALIGN = {
-  { 0 }, (u32)-1, WUP_028_ENDPOINT_OUT, 1 + GCN_CONTROLLER_COUNT, rumble_msg_buffer
-};
 
 static s32 onRumble(s32 ret, void *usr) {
   if ((u8)(u32)usr != rumble_token || !rumble_inflight) return 0; /* stale */
@@ -825,6 +840,7 @@ void gca_install(void) {
   static u8 installed = 0;
   if (installed) return;
   installed = 1;
+  ios_bufs_init();
 
   u32 target = (u32)gca_PADRead;
   int patched = 0;

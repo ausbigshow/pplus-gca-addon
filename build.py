@@ -101,7 +101,7 @@ GCTRM_UNSUPPORTED = {"clrlwi", "clrrwi", "mftb", "mtmsr", "mfmsr", "bcl", "cmpdi
 
 ASM_HEADER = """\
 #####################################################################
-USB GameCube Adapter (Wii U) v{version} [ausbigshow]
+USB GameCube Adapter (Wii U) v{version} codeset build, not yet console-tested [ausbigshow]
 #####################################################################
 # Lets the official Wii U GameCube Controller Adapter (WUP-028) work in game
 # in Project+ 3.2.1 on vWii. Add to BOOST.txt with
@@ -146,12 +146,19 @@ def write_asm(blob: bytes, syms: dict, dis: str, path: Path, version: str):
 
     out = [ASM_HEADER.format(version=version, diag=syms["gca_diag"], size=len(blob)),
            "PULSE", "{"]
+    func = None
     for line in dis.splitlines():
         m = insn.match(line)
         if not m:
-            if not line.strip() or re.match(r"^[0-9a-f]+ <", line) \
-                    or "file format" in line or line.startswith("Disassembly"):
+            if h := re.match(r"^[0-9a-f]+ <(.*)>:", line):
+                func = h[1]
+            if not line.strip() or h or "file format" in line or line.startswith("Disassembly"):
                 continue
+            # entry.S is already assembly: keep only its comments, not each line twice.
+            if func == "_entry":
+                if "#" not in line or re.match(r"#\s*(if|else|endif)", line.lstrip()):
+                    continue
+                line = line[line.index("#"):]
             out.append("  #| " + line.rstrip())
             continue
         a = int(m[1], 16)
@@ -306,6 +313,15 @@ def main():
         print(f"{k:20} {v}")
     (outdir / "build-report.txt").write_text(
         "\n".join(f"{k}: {v}" for k, v in report.items()) + "\n")
+
+    # GCTRM encodes some instructions wrongly without an error, so the .asm is
+    # only trustworthy once it has been assembled and compared.
+    if os.environ.get("GCTRM"):
+        print(run([sys.executable, str(HERE / "tests" / "check_asm.py"),
+                   os.environ["GCTRM"], args.boost]).rstrip())
+    else:
+        print("WARNING: USBGameCubeAdapter.asm unverified; set GCTRM=<GCTRealMate binary>"
+              " (runs tests/check_asm.py)")
 
 
 if __name__ == "__main__":

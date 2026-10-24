@@ -209,6 +209,9 @@ class Brawl:
     def m_ioctl(self):
         fd, num, inp, inlen, out, outlen, cb, usr = self.args(8)
         assert fd == 7
+        assert inp % 32 == 0 and out % 32 == 0, f"ioctl {num}: buffer not 32-byte aligned"
+        if num in (3, 4):
+            assert self.r32(inp + 28) % 32 == 0, "interrupt data not 32-byte aligned"
         v = self.hid_version
         res = None  # None = stays pending
         if num == 6 and not self.probed:                        # v4 GET_VERSION probe
@@ -260,6 +263,7 @@ class Brawl:
         fd, num, nin, nout, argv, cb, usr = self.args(7)
         assert fd == 7 and num == 19 and self.hid_version == 5
         a0d, a0l, a1d, a1l = struct.unpack(">IIII", self.uc.mem_read(argv, 16))
+        assert argv % 32 == 0 and a0d % 32 == 0 and a1d % 32 == 0, "ioctlv buffer not 32-byte aligned"
         assert a0d >> 28 == 9 and a0l == 0x40, "v5 header not in MEM2"
         if nin == 2 and nout == 0:      # OUT: init or rumble
             assert self.r32(a0d) == self.dev_id, "OUT header lacks device id"

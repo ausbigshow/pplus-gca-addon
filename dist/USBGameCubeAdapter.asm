@@ -1,5 +1,5 @@
 #####################################################################
-USB GameCube Adapter (Wii U) v1.2 [ausbigshow]
+USB GameCube Adapter (Wii U) v1.2 codeset build, not yet console-tested [ausbigshow]
 #####################################################################
 # Lets the official Wii U GameCube Controller Adapter (WUP-028) work in game
 # in Project+ 3.2.1 on vWii. Add to BOOST.txt with
@@ -21,132 +21,79 @@ USB GameCube Adapter (Wii U) v1.2 [ausbigshow]
 #   signature doesn't match it patches nothing.
 # - From there it talks to the adapter through IOS /dev/usb/hid (v4 or v5).
 #
-# Status block for memory viewers: gca_diag is at code body + 0x1ec0
-# (the C0 line + 8 + 0x1ec0); see the README for its twelve words.
-# Size: 0x2750 bytes. Brawl addresses used are the #define ADDR_* lines in gca.c.
+# Status block for memory viewers: gca_diag is at code body + 0x1ecc
+# (the C0 line + 8 + 0x1ecc); see the README for its twelve words.
+# Size: 0x2788 bytes. Brawl addresses used are the #define ADDR_* lines in gca.c.
 
 PULSE
 {
   #| # frame; it must preserve everything the codehandler relies on, so save all
   #| # GPRs, CR and LR, run gca_install (no-op after the first call), and return.
-  #|     .section .text.entry, "ax"
-  #|     .globl _entry
-  #| _entry:
-  #|     stwu  1, -0xA0(1)
 
 # ---- _entry ------------------------------------------------------
 GCA__entry:
   stwu r1,-160(r1)
-  #|     mflr  0
   mflr r0
-  #|     stw   0, 0xA4(1)
   stw r0,164(r1)
-  #|     mfcr  0
   mfcr r0
-  #|     stw   0, 0x90(1)
   stw r0,144(r1)
-  #|     mfctr 0
   mfctr r0
-  #|     stw   0, 0x94(1)
   stw r0,148(r1)
-  #|     stmw  3, 0x10(1)
   stmw r3,16(r1)
-  #| #ifdef GCA_PIC
   #| # Position-independent build (the GCTRM .asm for the Project+ codeset), linked
   #| # at 0. The compiler leaves every absolute address in .got2 or in a word that
   #| # .fixup lists, so add the distance moved since the last run to each of them.
-  #|     bcl   20, 31, 1f
   word 0x429F0005                    # bcl 20,4*cr7+so,24 <_entry+0x24>
-  #| 1:  mflr  4
 GCA_L0024:
   mflr r4
-  #|     addi  3, 4, _entry - 1b               # r3 = where we run now
+  #| # r3 = where we run now
   addi r3,r4,-36
-  #|     addis 5, 4, (gca_reloc_base - 1b)@ha
   addis r5,r4,0
-  #|     addi  5, 5, (gca_reloc_base - 1b)@l
-  addi r5,r5,7708
-  #|     lwz   6, 0(5)
+  addi r5,r5,7836
   lwz r6,0(r5)
-  #|     subf. 6, 6, 3                         # r6 = delta since last relocation
+  #| # r6 = delta since last relocation
   subf. r6,r6,r3
-  #|     beq   5f
   beq GCA_L00a4
-  #|     stw   3, 0(5)
   stw r3,0(r5)
-  #|     addis 7, 4, (__got2_start - 1b)@ha
   addis r7,r4,0
-  #|     addi  7, 7, (__got2_start - 1b)@l
-  addi r7,r7,9924
-  #|     addis 8, 4, (__got2_end - 1b)@ha
+  addi r7,r7,9996
   addis r8,r4,0
-  #|     addi  8, 8, (__got2_end - 1b)@l
-  addi r8,r8,10012
-  #| 2:  cmplw 7, 8
+  addi r8,r8,10080
 GCA_L0054:
   cmplw r7,r8
-  #|     bge   3f
   bge GCA_L0070
-  #|     lwz   9, 0(7)
   lwz r9,0(r7)
-  #|     add   9, 9, 6
   add r9,r9,r6
-  #|     stw   9, 0(7)
   stw r9,0(r7)
-  #|     addi  7, 7, 4
   addi r7,r7,4
-  #|     b     2b
   b GCA_L0054
-  #| 3:  addis 7, 4, (__fixup_start - 1b)@ha
 GCA_L0070:
   addis r7,r4,0
-  #|     addi  7, 7, (__fixup_start - 1b)@l
-  addi r7,r7,10012
-  #|     addis 8, 4, (__fixup_end - 1b)@ha
+  addi r7,r7,10080
   addis r8,r4,0
-  #|     addi  8, 8, (__fixup_end - 1b)@l
-  addi r8,r8,10024
-  #| 4:  cmplw 7, 8
+  addi r8,r8,10080
 GCA_L0080:
   cmplw r7,r8
-  #|     bge   5f
   bge GCA_L00a4
-  #|     lwz   9, 0(7)                         # link address of a word to fix
+  #| # link address of a word to fix
   lwz r9,0(r7)
-  #|     add   9, 9, 3                         # linked at 0: + base = its address now
+  #| # linked at 0: + base = its address now
   add r9,r9,r3
-  #|     lwz   10, 0(9)
   lwz r10,0(r9)
-  #|     add   10, 10, 6
   add r10,r10,r6
-  #|     stw   10, 0(9)
   stw r10,0(r9)
-  #|     addi  7, 7, 4
   addi r7,r7,4
-  #|     b     4b
   b GCA_L0080
-  #| 5:
-  #| #endif
-  #|     bl    gca_install
 GCA_L00a4:
   bl GCA_gca_install
-  #|     lmw   3, 0x10(1)
   lmw r3,16(r1)
-  #|     lwz   0, 0x94(1)
   lwz r0,148(r1)
-  #|     mtctr 0
   mtctr r0
-  #|     lwz   0, 0x90(1)
   lwz r0,144(r1)
-  #|     mtcr  0
   mtcr r0
-  #|     lwz   0, 0xA4(1)
   lwz r0,164(r1)
-  #|     mtlr  0
   mtlr r0
-  #|     addi  1, 1, 0xA0
   addi r1,r1,160
-  #|     blr
   blr
   #| /* Request builders                                                           */
   #| /*============================================================================*/
@@ -175,7 +122,7 @@ GCA_L00e0:
   addis r30,r30,1
   stw r31,44(r1)
   stw r0,52(r1)
-  addi r30,r30,-23032
+  addi r30,r30,-22960
   stw r25,20(r1)
   mr r31,r3
   stw r27,28(r1)
@@ -595,7 +542,7 @@ GCA_L051c:
   mflr r30
   addis r30,r30,1
   stw r0,20(r1)
-  addi r30,r30,-24116
+  addi r30,r30,-24044
   #|   gca_diag[10]++;
   lwz r10,-32764(r30)
   lwz r9,40(r10)
@@ -636,7 +583,7 @@ GCA_L0590:
   mflr r30
   addis r30,r30,1
   stw r0,20(r1)
-  addi r30,r30,-24232
+  addi r30,r30,-24160
   #|   if ((u8)(u32)usr != rumble_token || !rumble_inflight) return 0; /* stale */
   lwz r9,-32768(r30)
   lbz r10,124(r9)
@@ -731,7 +678,7 @@ GCA_L0674:
   addis r30,r30,1
   stw r0,20(r1)
   stw r31,12(r1)
-  addi r30,r30,-24460
+  addi r30,r30,-24388
   #|   if (ret == 0) {
   beq GCA_L06c8
   lwz r31,-32752(r30)
@@ -759,12 +706,12 @@ GCA_L0694:
   blr
   #|     for (int i = 8; i < 32; i++) hid5_buffer[i] = 0;
 GCA_L06c8:
-  lwz r5,-32768(r30)
+  lwz r7,-32768(r30)
   li r9,6
   mtctr r9
   li r10,0
-  lwz r7,136(r5)
-  addi r9,r7,28
+  lwz r6,136(r7)
+  addi r9,r6,28
 GCA_L06e0:
   stw r10,4(r9)
   stw r10,8(r9)
@@ -773,41 +720,41 @@ GCA_L06e0:
   bdnz+ GCA_L06e0
   #|     hid5_buffer[16] = gcn_adapter_id;
   lwz r31,-32752(r30)
-  #|   return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 2, 0, hid5_argv, cb, NULL);
-  lis r9,-32735
-  ori r9,r9,12204
   #|   hid5_argv[0].len = 0x40;
-  li r8,64
-  #|     hid5_buffer[16] = gcn_adapter_id;
-  lwz r6,4(r31)
-  #|   return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 2, 0, hid5_argv, cb, NULL);
-  mtctr r9
-  #|   hid5_argv[1].len = 1;
-  li r10,1
-  #|   hid5_argv[1].data = init_msg_buffer;
-  addi r9,r31,32
+  li r5,64
   #|   hid5_argv[0].data = hid5_buffer;
-  stw r7,160(r5)
+  lwz r10,140(r7)
   #|   return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 2, 0, hid5_argv, cb, NULL);
-  li r4,19
+  lis r7,-32735
   #|     hid5_buffer[16] = gcn_adapter_id;
-  stw r6,64(r7)
+  lwz r9,4(r31)
+  #|   hid5_argv[1].len = 1;
+  li r8,1
   #|   return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 2, 0, hid5_argv, cb, NULL);
-  addi r7,r5,160
-  #|   hid5_argv[1].data = init_msg_buffer;
-  stw r9,168(r5)
+  ori r7,r7,12204
+  lwz r3,0(r31)
+  #|     hid5_buffer[16] = gcn_adapter_id;
+  stw r9,64(r6)
   #|   return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 2, 0, hid5_argv, cb, NULL);
-  li r6,0
+  mtctr r7
+  #|   hid5_argv[0].data = hid5_buffer;
+  stw r6,1760(r10)
+  #|   return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 2, 0, hid5_argv, cb, NULL);
+  addi r7,r10,1760
   #|   hid5_argv[0].len = 0x40;
-  stw r8,164(r5)
+  stw r5,1764(r10)
   #|   return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 2, 0, hid5_argv, cb, NULL);
   li r9,0
   #|   hid5_argv[1].len = 1;
-  stw r10,172(r5)
+  stw r8,1772(r10)
+  #|   return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 2, 0, hid5_argv, cb, NULL);
+  li r6,0
+  #|   hid5_argv[1].data = init_msg_buffer;
+  stw r10,1768(r10)
   #|   return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 2, 0, hid5_argv, cb, NULL);
   li r5,2
-  lwz r3,0(r31)
   lwz r8,-32740(r30)
+  li r4,19
   bctrl
   #|   if (ret) { DIAG_ERR(9, ret); gcn_adapter_id = (u32)-1; }
   cmpwi r3,0
@@ -836,7 +783,7 @@ GCA_L077c:
   addis r30,r30,1
   stw r0,20(r1)
   stw r31,12(r1)
-  addi r30,r30,-24724
+  addi r30,r30,-24652
   #|   if (ret == 0) ret = sendParams5(onDevUsbParams5);
   beq GCA_L07d0
   lwz r31,-32752(r30)
@@ -901,22 +848,20 @@ GCA_L0838:
   mflr r30
   addis r30,r30,1
   stw r31,20(r1)
-  addi r30,r30,-24912
+  addi r30,r30,-24840
   stw r0,28(r1)
-  stw r28,8(r1)
-  stw r29,12(r1)
   #|   if (rumble_inflight) {
   lwz r31,-32768(r30)
   lbz r9,125(r31)
   cmpwi r9,0
-  beq GCA_L089c
+  beq GCA_L0894
   #|     if (++rumble_stall < RUMBLE_STALL_POLLS) return;
-  lbz r9,176(r31)
+  lbz r9,144(r31)
   addi r9,r9,1
   word 0x552A063E                    # clrlwi r10,r9,24
-  stb r9,176(r31)
+  stb r9,144(r31)
   cmplwi r10,63
-  ble GCA_L08dc
+  ble GCA_L08d4
   #|     rumble_token++;
   lbz r9,124(r31)
   #|     rumble_inflight = 0;
@@ -932,16 +877,16 @@ GCA_L0838:
   #|     rumble_token++;
   stb r9,124(r31)
   #|   for (int i = 0; i < GCN_CONTROLLER_COUNT; i++)
-GCA_L089c:
+GCA_L0894:
   li r9,4
-  lwz r6,-32720(r30)
+  lwz r6,-32724(r30)
   #|   int dirty = 0;
   li r7,0
   #|   for (int i = 0; i < GCN_CONTROLLER_COUNT; i++)
   li r10,0
   mtctr r9
   #|     if (rumble_want[i] != rumble_acked[i]) dirty = 1;
-GCA_L08b0:
+GCA_L08a8:
   add r8,r31,r10
   lbzx r9,r6,r10
   lbz r8,120(r8)
@@ -953,95 +898,100 @@ GCA_L08b0:
   subfe r9,r8,r9
   or r7,r7,r9
   #|   for (int i = 0; i < GCN_CONTROLLER_COUNT; i++)
-  bdnz+ GCA_L08b0
+  bdnz+ GCA_L08a8
   #|   if (!dirty) return;
   cmpwi r7,0
-  bne GCA_L096c
+  bne GCA_L0968
   #|   if (version == 5) return sendPoll5(onDevUsbPoll);
-GCA_L08dc:
-  lbz r9,177(r31)
-GCA_L08e0:
+GCA_L08d4:
+  lbz r9,145(r31)
+GCA_L08d8:
   extsb r9,r9
   cmpwi r9,5
   beq GCA_L0a48
   #|   if (version == 4) return sendPoll4(onDevUsbPoll);
-GCA_L08ec:
+GCA_L08e4:
   cmpwi r9,4
-  bne GCA_L0b38
+  bne GCA_L0b40
+  #|   poll_msg4.device = gcn_adapter_id;
+  stw r29,12(r1)
+  #|   DCFlushRange(poll_msg_buffer, sizeof(poll_msg_buffer));
+  lis r10,-32739
   #|   poll_msg4.device = gcn_adapter_id;
   lwz r29,-32752(r30)
   #|   DCFlushRange(poll_msg_buffer, sizeof(poll_msg_buffer));
-  lis r9,-32739
-  ori r9,r9,30440
+  ori r10,r10,30440
   #|   poll_msg4.device = gcn_adapter_id;
-  lwz r28,-32728(r30)
+  lwz r9,140(r31)
   #|   DCFlushRange(poll_msg_buffer, sizeof(poll_msg_buffer));
-  mtctr r9
+  mtctr r10
   #|   poll_msg4.device = gcn_adapter_id;
-  lwz r9,4(r29)
+  lwz r10,4(r29)
   #|   DCFlushRange(poll_msg_buffer, sizeof(poll_msg_buffer));
-  addi r3,r31,256
   li r4,64
+  addi r3,r9,32
   #|   poll_msg4.device = gcn_adapter_id;
-  stw r9,48(r28)
+  stw r10,1712(r9)
   #|   DCFlushRange(poll_msg_buffer, sizeof(poll_msg_buffer));
   bctrl
+  #|                         &poll_msg4, sizeof(poll_msg4), NULL, 0, cb, NULL);
+  lwz r5,140(r31)
   #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_INTERRUPT_IN,
   lis r9,-32735
-  ori r9,r9,11272
   lwz r3,0(r29)
+  ori r9,r9,11272
+  addi r5,r5,1696
   mtctr r9
-  addi r5,r28,32
-  lwz r9,-32724(r30)
   li r10,0
+  lwz r9,-32728(r30)
   li r8,0
   li r7,0
   li r6,32
   li r4,3
   bctrl
-  #| }
-GCA_L094c:
-  lwz r0,28(r1)
-  lwz r28,8(r1)
   lwz r29,12(r1)
-  mtlr r0
+  #| }
+GCA_L0950:
+  lwz r0,28(r1)
   lwz r30,16(r1)
   lwz r31,20(r1)
+  mtlr r0
   addi r1,r1,24
   blr
   #|   rumble_inflight = 1;
-GCA_L096c:
+GCA_L0968:
   li r8,1
-  lwz r28,-32752(r30)
+  #|     rumble_msg_buffer[1 + i] = rumble_pending[i];
+  lwz r3,140(r31)
+  #|   rumble_inflight = 1;
   stb r8,125(r31)
   #|   rumble_stall = 0;
   li r10,0
   li r8,4
-  stb r10,176(r31)
+  stb r10,144(r31)
   #|   for (int i = 0; i < GCN_CONTROLLER_COUNT; i++) {
   mtctr r8
-  lwz r8,-32716(r30)
+  lwz r8,-32720(r30)
   li r9,0
-  addi r29,r28,64
+  addi r3,r3,96
   #|     rumble_pending[i] = rumble_want[i];
-GCA_L0994:
+GCA_L0990:
   add r10,r31,r9
   lbz r10,120(r10)
   stbx r10,r8,r9
   #|     rumble_msg_buffer[1 + i] = rumble_pending[i];
   addi r9,r9,1
-  stbx r10,r29,r9
+  stbx r10,r3,r9
   #|   for (int i = 0; i < GCN_CONTROLLER_COUNT; i++) {
-  bdnz+ GCA_L0994
+  bdnz+ GCA_L0990
   #|   DCFlushRange(rumble_msg_buffer, sizeof(rumble_msg_buffer));
   lis r9,-32739
   li r4,32
   ori r9,r9,30440
-  mr r3,r29
   mtctr r9
   bctrl
   #|   if (version == 5) {
-  lbz r8,177(r31)
+  lbz r8,145(r31)
   #|   void *token = (void *)(u32)++rumble_token;
   lbz r10,124(r31)
   #|   if (version == 5) {
@@ -1052,22 +1002,26 @@ GCA_L0994:
   stb r10,124(r31)
   word 0x554A063E                    # clrlwi r10,r10,24
   #|   if (version == 5) {
-  beq GCA_L0ad8
+  beq GCA_L0ad4
   #|   if (version == 4) {
   cmpwi r8,4
-  bne GCA_L0b20
+  bne GCA_L0b28
   #|     rumble_msg4.device = gcn_adapter_id;
-  lwz r9,4(r28)
+  lwz r8,-32752(r30)
   #|     return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_INTERRUPT_OUT,
-  lis r8,-32735
+  lis r7,-32735
+  ori r7,r7,11272
   #|     rumble_msg4.device = gcn_adapter_id;
-  lwz r5,-32728(r30)
+  lwz r9,140(r31)
   #|     return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_INTERRUPT_OUT,
-  ori r8,r8,11272
-  mtctr r8
-  lwz r3,0(r28)
+  mtctr r7
   #|     rumble_msg4.device = gcn_adapter_id;
-  stw r9,16(r5)
+  lwz r7,4(r8)
+  #|     return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_INTERRUPT_OUT,
+  lwz r3,0(r8)
+  addi r5,r9,1728
+  #|     rumble_msg4.device = gcn_adapter_id;
+  stw r7,1744(r9)
   #|     return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_INTERRUPT_OUT,
   li r8,0
   lwz r9,-32732(r30)
@@ -1079,9 +1033,9 @@ GCA_L0994:
 GCA_L0a20:
   cmpwi r3,0
   lwz r8,-32764(r30)
-  bne GCA_L0abc
+  bne GCA_L0ab8
   #|   if (version == 5) return sendPoll5(onDevUsbPoll);
-  lbz r9,177(r31)
+  lbz r9,145(r31)
   #|   else gca_diag[6]++;
   lwz r10,24(r8)
   #|   if (version == 5) return sendPoll5(onDevUsbPoll);
@@ -1091,95 +1045,101 @@ GCA_L0a20:
   addi r10,r10,1
   stw r10,24(r8)
   #|   if (version == 5) return sendPoll5(onDevUsbPoll);
-  bne+ GCA_L08ec
+  bne+ GCA_L08e4
   #|   hid5_poll_argv[0].data = hid5_buffer + 0x10;
 GCA_L0a48:
-  lwz r9,136(r31)
+  lwz r9,140(r31)
   #|   return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 1, 1, hid5_poll_argv, cb, NULL);
-  lis r10,-32735
-  lwz r7,-32752(r30)
-  ori r10,r10,12204
-  #|   hid5_poll_argv[1].data = poll_msg_buffer;
-  addi r8,r31,256
-  #|   return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 1, 1, hid5_poll_argv, cb, NULL);
-  mtctr r10
+  lis r4,-32735
   #|   hid5_poll_argv[0].data = hid5_buffer + 0x10;
-  addi r9,r9,64
+  lwz r10,136(r31)
   #|   hid5_poll_argv[0].len = 0x40;
-  li r6,64
+  li r7,64
+  #|   return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 1, 1, hid5_poll_argv, cb, NULL);
+  lwz r8,-32752(r30)
+  #|   hid5_poll_argv[1].data = poll_msg_buffer;
+  addi r5,r9,32
+  #|   hid5_poll_argv[0].data = hid5_buffer + 0x10;
+  addi r10,r10,64
   #|   hid5_poll_argv[1].len = WUP_028_POLL_SIZE;
-  li r10,37
-  #|   hid5_poll_argv[0].data = hid5_buffer + 0x10;
-  stw r9,224(r31)
-  #|   hid5_poll_argv[0].len = 0x40;
-  stw r6,228(r31)
+  li r6,37
   #|   return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 1, 1, hid5_poll_argv, cb, NULL);
-  li r9,0
+  ori r4,r4,12204
+  #|   hid5_poll_argv[0].len = 0x40;
+  stw r7,1796(r9)
   #|   hid5_poll_argv[1].data = poll_msg_buffer;
-  stw r8,232(r31)
+  stw r5,1800(r9)
+  #|   return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 1, 1, hid5_poll_argv, cb, NULL);
+  mtctr r4
+  #|   hid5_poll_argv[1].len = WUP_028_POLL_SIZE;
+  stw r6,1804(r9)
+  #|   return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 1, 1, hid5_poll_argv, cb, NULL);
+  addi r7,r9,1792
+  #|   hid5_poll_argv[0].data = hid5_buffer + 0x10;
+  stw r10,1792(r9)
   #|   return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 1, 1, hid5_poll_argv, cb, NULL);
   li r6,1
-  lwz r3,0(r7)
+  lwz r3,0(r8)
+  li r9,0
+  lwz r8,-32728(r30)
   li r5,1
-  #|   hid5_poll_argv[1].len = WUP_028_POLL_SIZE;
-  stw r10,236(r31)
-  #|   return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 1, 1, hid5_poll_argv, cb, NULL);
-  addi r7,r31,224
-  lwz r8,-32724(r30)
   li r4,19
   bctrl
   #| }
   lwz r0,28(r1)
-  lwz r28,8(r1)
-  lwz r29,12(r1)
-  mtlr r0
   lwz r30,16(r1)
   lwz r31,20(r1)
+  mtlr r0
   addi r1,r1,24
   blr
   #|   if (sendRumble()) { rumble_inflight = 0; gca_diag[11]++; }
-GCA_L0abc:
+GCA_L0ab8:
   lwz r10,44(r8)
   li r9,0
   stb r9,125(r31)
   addi r10,r10,1
   #|   if (version == 5) return sendPoll5(onDevUsbPoll);
-  lbz r9,177(r31)
+  lbz r9,145(r31)
   #|   if (sendRumble()) { rumble_inflight = 0; gca_diag[11]++; }
   stw r10,44(r8)
-  b GCA_L08e0
+  b GCA_L08d8
   #|     hid5_rumble_argv[0].data = hid5_buffer;
-GCA_L0ad8:
-  lwz r6,136(r31)
+GCA_L0ad4:
+  lwz r5,140(r31)
   #|     return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 2, 0, hid5_rumble_argv,
   lis r9,-32735
-  ori r9,r9,12204
+  lwz r4,-32752(r30)
   #|     hid5_rumble_argv[0].len = 0x40;
-  li r5,64
+  li r6,64
+  #|     hid5_rumble_argv[0].data = hid5_buffer;
+  lwz r11,136(r31)
+  #|     hid5_rumble_argv[1].data = rumble_msg_buffer;
+  addi r3,r5,96
+  #|     return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 2, 0, hid5_rumble_argv,
+  ori r9,r9,12204
   #|     hid5_rumble_argv[1].len = 1 + GCN_CONTROLLER_COUNT;
-  stw r8,204(r31)
+  stw r8,1836(r5)
+  #|     hid5_rumble_argv[0].data = hid5_buffer;
+  stw r11,1824(r5)
   #|     return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 2, 0, hid5_rumble_argv,
   mtctr r9
-  #|     hid5_rumble_argv[0].data = hid5_buffer;
-  stw r6,192(r31)
+  #|     hid5_rumble_argv[0].len = 0x40;
+  stw r6,1828(r5)
+  #|     return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 2, 0, hid5_rumble_argv,
+  addi r7,r5,1824
+  #|     hid5_rumble_argv[1].data = rumble_msg_buffer;
+  stw r3,1832(r5)
   #|     return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 2, 0, hid5_rumble_argv,
   mr r9,r10
-  #|     hid5_rumble_argv[0].len = 0x40;
-  stw r5,196(r31)
-  #|     return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 2, 0, hid5_rumble_argv,
-  addi r7,r31,192
-  #|     hid5_rumble_argv[1].data = rumble_msg_buffer;
-  stw r29,200(r31)
-  #|     return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 2, 0, hid5_rumble_argv,
+  lwz r3,0(r4)
   li r6,0
-  lwz r3,0(r28)
-  li r5,2
   lwz r8,-32732(r30)
+  li r5,2
   li r4,19
   bctrl
   b GCA_L0a20
   #|   if (sendRumble()) { rumble_inflight = 0; gca_diag[11]++; }
-GCA_L0b20:
+GCA_L0b28:
   lwz r10,-32764(r30)
   li r9,0
   stb r9,125(r31)
@@ -1187,9 +1147,9 @@ GCA_L0b20:
   addi r9,r9,1
   stw r9,44(r10)
   #|   return -1;
-GCA_L0b38:
+GCA_L0b40:
   li r3,-1
-  b GCA_L094c
+  b GCA_L0950
   #| static s32 onDevUsbInit(s32 ret, void *usr) {
 
 # ---- onDevUsbInit ------------------------------------------------
@@ -1199,19 +1159,19 @@ GCA_onDevUsbInit:
   cmpwi r3,0
   #| static s32 onDevUsbInit(s32 ret, void *usr) {
   mflr r0
-  word 0x429F0005                    # bcl 20,4*cr7+so,b50 <onDevUsbInit+0x10>
-GCA_L0b50:
+  word 0x429F0005                    # bcl 20,4*cr7+so,b58 <onDevUsbInit+0x10>
+GCA_L0b58:
   stw r30,8(r1)
   mflr r30
   addis r30,r30,1
   stw r0,20(r1)
   stw r31,12(r1)
-  addi r30,r30,-25704
+  addi r30,r30,-25640
   #|   if (ret >= 0) { DIAG_STAGE(7); rumble_reset(); poll_errors = 0; ret = sendPoll(); }
-  bge GCA_L0ba4
+  bge GCA_L0bac
   lwz r31,-32764(r30)
   #|   if (ret) { DIAG_ERR(10, ret); gcn_adapter_id = (u32)-1; }
-GCA_L0b70:
+GCA_L0b78:
   lwz r9,-32752(r30)
   li r8,10
   #| }
@@ -1233,7 +1193,7 @@ GCA_L0b70:
   addi r1,r1,16
   blr
   #|   for (int i = 0; i < GCN_CONTROLLER_COUNT; i++) rumble_acked[i] = 0;
-GCA_L0ba4:
+GCA_L0bac:
   lwz r9,-32768(r30)
   li r10,0
   #|   if (ret >= 0) { DIAG_STAGE(7); rumble_reset(); poll_errors = 0; ret = sendPoll(); }
@@ -1250,12 +1210,12 @@ GCA_L0ba4:
   #|   rumble_token++;
   stb r8,124(r9)
   #|   if (ret >= 0) { DIAG_STAGE(7); rumble_reset(); poll_errors = 0; ret = sendPoll(); }
-  stb r10,320(r9)
+  stb r10,146(r9)
   stw r7,4(r31)
   bl GCA_sendPoll
   #|   if (ret) { DIAG_ERR(10, ret); gcn_adapter_id = (u32)-1; }
   cmpwi r3,0
-  bne GCA_L0b70
+  bne GCA_L0b78
   #| }
   lwz r0,20(r1)
   li r3,0
@@ -1268,55 +1228,56 @@ GCA_L0ba4:
 
 # ---- onDevUsbPoll ------------------------------------------------
 GCA_onDevUsbPoll:
-  stwu r1,-80(r1)
+  stwu r1,-48(r1)
   mflr r0
   #|   if (ret >= 0) {
   cmpwi r3,0
   #| static s32 onDevUsbPoll(s32 ret, void *usr) {
-  word 0x429F0005                    # bcl 20,4*cr7+so,c08 <onDevUsbPoll+0x10>
-GCA_L0c08:
-  stw r30,72(r1)
+  word 0x429F0005                    # bcl 20,4*cr7+so,c10 <onDevUsbPoll+0x10>
+GCA_L0c10:
+  stw r30,40(r1)
   mflr r30
   addis r30,r30,1
-  stw r31,76(r1)
-  addi r30,r30,-25888
-  stw r0,84(r1)
+  stw r31,44(r1)
+  addi r30,r30,-25824
+  stw r0,52(r1)
   #|     poll_errors = 0;
   lwz r31,-32768(r30)
   #|   if (ret >= 0) {
-  blt GCA_L0c64
+  blt GCA_L0c70
   #|     if (poll_msg_buffer[0] == 0x21) {
-  lbz r9,256(r31)
+  lwz r10,140(r31)
   #|     poll_errors = 0;
-  li r10,0
-  stb r10,320(r31)
+  li r9,0
+  stb r9,146(r31)
   #|     if (poll_msg_buffer[0] == 0x21) {
+  lbz r9,32(r10)
   cmpwi r9,33
-  beq GCA_L0cbc
+  beq GCA_L0cc8
   #|     ret = sendPoll(); /* one-off glitch: keep the adapter */
-GCA_L0c3c:
+GCA_L0c48:
   bl GCA_sendPoll
   #|   if (ret) { DIAG_ERR(11, ret); gcn_adapter_id = (u32)-1; adapter_live = 0; }
   cmpwi r3,0
-  bne GCA_L0c7c
+  bne GCA_L0c88
   #| }
-  lwz r0,84(r1)
+  lwz r0,52(r1)
   li r3,0
-  lwz r30,72(r1)
-  lwz r31,76(r1)
+  lwz r30,40(r1)
+  lwz r31,44(r1)
   mtlr r0
-  addi r1,r1,80
+  addi r1,r1,48
   blr
   #|   } else if (++poll_errors < POLL_RETRIES) {
-GCA_L0c64:
-  lbz r9,320(r31)
+GCA_L0c70:
+  lbz r9,146(r31)
   addi r9,r9,1
   word 0x552A063E                    # clrlwi r10,r9,24
-  stb r9,320(r31)
+  stb r9,146(r31)
   cmplwi r10,2
-  ble GCA_L0c3c
+  ble GCA_L0c48
   #|   if (ret) { DIAG_ERR(11, ret); gcn_adapter_id = (u32)-1; adapter_live = 0; }
-GCA_L0c7c:
+GCA_L0c88:
   lwz r9,-32764(r30)
   li r6,11
   lwz r8,-32752(r30)
@@ -1330,91 +1291,80 @@ GCA_L0c7c:
   stw r7,4(r8)
   stb r10,57(r31)
   #| }
-  lwz r0,84(r1)
-  lwz r30,72(r1)
-  lwz r31,76(r1)
+  lwz r0,52(r1)
+  lwz r30,40(r1)
+  lwz r31,44(r1)
   mtlr r0
-  addi r1,r1,80
+  addi r1,r1,48
   blr
-GCA_L0cbc:
-  stw r16,16(r1)
-  stw r17,20(r1)
-  stw r18,24(r1)
-  stw r19,28(r1)
-  stw r20,32(r1)
-  stw r21,36(r1)
-  stw r22,40(r1)
-  stw r23,44(r1)
-  stw r24,48(r1)
-  stw r25,52(r1)
-  stw r26,56(r1)
-  stw r27,60(r1)
-  stw r28,64(r1)
-  stw r29,68(r1)
+GCA_L0cc8:
+  stw r22,8(r1)
+  stw r23,12(r1)
+  stw r24,16(r1)
+  stw r25,20(r1)
+  stw r26,24(r1)
+  stw r27,28(r1)
+  stw r28,32(r1)
+  stw r29,36(r1)
   #|   __asm__ volatile("mftb %0" : "=r"(r));
   word 0x7FAC42E6                    # mftb r29
   #|   __asm__ volatile("mfmsr %0; rlwinm %1, %0, 0, 17, 15; mtmsr %1"
   word 0x7F2000A6                    # mfmsr r25
   rlwinm r9,r25,0,17,15
   word 0x7D200124                    # mtmsr r9
+  #|   while (n--) *b++ = 0;
+  li r8,0
+  addi r9,r10,33
+  addi r0,r10,69
+  addi r7,r31,2
+  addi r11,r31,148
+  addi r3,r31,152
+  addi r4,r31,60
+  addi r5,r31,159
+  addi r12,r31,184
   #|           s->err = PAD_ERR_NO_CONTROLLER;
   li r26,-1
-  addi r8,r31,257
-  addi r7,r31,2
-  addi r11,r31,324
-  addi r3,r31,328
-  addi r4,r31,60
-  addi r5,r31,335
-  addi r12,r31,360
-  addi r0,r31,293
   #|           prev_btn[i] = 0;
   li r27,0
   #|           recal_start[i] = 0;
   li r28,0
   #|         u8 type = d[0] >> 4;
-GCA_L0d30:
-  lbz r6,0(r8)
-  #|         int analog_zero = !(d[3] | d[4] | d[5] | d[6] | d[7] | d[8]);
-  lbz r24,3(r8)
-  #|         u8 type = d[0] >> 4;
+GCA_L0d28:
+  lbz r6,0(r9)
+  lbz r10,3(r9)
   srwi r6,r6,4
-  #|         int analog_zero = !(d[3] | d[4] | d[5] | d[6] | d[7] | d[8]);
-  lbz r23,4(r8)
+  lbz r24,4(r9)
   #|         if ((type != 1 && type != 2) || (!origin_valid[i] && analog_zero)) {
   addi r6,r6,-1
   word 0x54C6063E                    # clrlwi r6,r6,24
-  or r9,r24,r23
+  or r10,r10,r24
   cmplwi r6,1
-  bgt GCA_L0d88
-  #|         int analog_zero = !(d[3] | d[4] | d[5] | d[6] | d[7] | d[8]);
-  lbz r21,5(r8)
-  lbz r22,6(r8)
-  lbz r20,7(r8)
-  #|         if ((type != 1 && type != 2) || (!origin_valid[i] && analog_zero)) {
-  or r9,r9,r21
-  #|         int analog_zero = !(d[3] | d[4] | d[5] | d[6] | d[7] | d[8]);
-  lbz r19,8(r8)
-  #|         if ((type != 1 && type != 2) || (!origin_valid[i] && analog_zero)) {
-  or r9,r9,r22
-  lbz r17,0(r11)
-  or r9,r9,r20
-  or r9,r9,r19
-  or r9,r9,r17
-  word 0x5529063E                    # clrlwi r9,r9,24
-  cmpwi r9,0
-  bne GCA_L0e40
-GCA_L0d88:
-  addi r9,r7,-1
+  bgt GCA_L0d80
+  lbz r24,5(r9)
+  lbz r6,6(r9)
+  or r10,r10,r24
+  lbz r24,7(r9)
+  or r10,r10,r6
+  lbz r6,8(r9)
+  lbz r23,0(r11)
+  or r10,r10,r24
+  or r10,r10,r6
+  or r10,r10,r23
+  word 0x554A063E                    # clrlwi r10,r10,24
+  cmpwi r10,0
+  bne GCA_L0e20
+GCA_L0d80:
+  addi r10,r7,-1
   #| static s32 onDevUsbPoll(s32 ret, void *usr) {
   li r6,12
   #|   while (n--) *b++ = 0;
-GCA_L0d90:
+GCA_L0d88:
   addic. r6,r6,-4
-  stb r10,1(r9)
-  stb r10,2(r9)
-  stb r10,3(r9)
-  stbu r10,4(r9)
-  bne+ GCA_L0d90
+  stb r8,1(r10)
+  stb r8,2(r10)
+  stb r8,3(r10)
+  stbu r8,4(r10)
+  bne+ GCA_L0d88
   #|           s->err = PAD_ERR_NO_CONTROLLER;
   stb r26,10(r7)
   #|           origin_valid[i] = 0;
@@ -1424,16 +1374,16 @@ GCA_L0d90:
   #|           press_latch[i] = 0;
   sth r27,0(r4)
   #|       for (int i = 0; i < GCN_CONTROLLER_COUNT; i++) {
-GCA_L0db8:
-  addi r8,r8,9
+GCA_L0db0:
+  addi r9,r9,9
   addi r7,r7,12
-  cmplw r0,r8
+  cmplw r9,r0
   addi r11,r11,1
   addi r3,r3,2
   addi r4,r4,2
   addi r5,r5,6
   addi r12,r12,4
-  bne+ GCA_L0d30
+  bne+ GCA_L0d28
   #|       adapter_live = 1;
   li r9,1
   #|       gcn_data_written = now;
@@ -1450,286 +1400,267 @@ GCA_L0db8:
   word 0x7D2000A6                    # mfmsr r9
   rlwimi r9,r25,0,16,16
   word 0x7D200124                    # mtmsr r9
-  lwz r16,16(r1)
-  lwz r17,20(r1)
-  lwz r18,24(r1)
-  lwz r19,28(r1)
-  lwz r20,32(r1)
-  lwz r21,36(r1)
-  lwz r22,40(r1)
-  lwz r23,44(r1)
-  lwz r24,48(r1)
-  lwz r25,52(r1)
-  lwz r26,56(r1)
-  lwz r27,60(r1)
-  lwz r28,64(r1)
-  lwz r29,68(r1)
+  lwz r22,8(r1)
+  lwz r23,12(r1)
+  lwz r24,16(r1)
+  lwz r25,20(r1)
+  lwz r26,24(r1)
+  lwz r27,28(r1)
+  lwz r28,32(r1)
+  lwz r29,36(r1)
   #| }
-  b GCA_L0c3c
+  b GCA_L0c48
   #|         if (d[1] & 0x01) b |= PAD_BUTTON_A;
-GCA_L0e40:
-  lbz r9,1(r8)
+GCA_L0e20:
+  lbz r10,1(r9)
   #|         if (d[1] & 0x02) b |= PAD_BUTTON_B;
-  andi. r6,r9,2
+  andi. r6,r10,2
   #|         if (d[1] & 0x01) b |= PAD_BUTTON_A;
-  rlwinm r18,r9,8,23,23
-  mr r6,r18
+  rlwinm r24,r10,8,23,23
+  mr r6,r24
   #|         if (d[1] & 0x02) b |= PAD_BUTTON_B;
-  beq GCA_L0e58
-  ori r6,r18,512
+  beq GCA_L0e38
+  ori r6,r24,512
   #|         if (d[1] & 0x04) b |= PAD_BUTTON_X;
-GCA_L0e58:
-  andi. r18,r9,4
-  beq GCA_L0e64
+GCA_L0e38:
+  andi. r24,r10,4
+  beq GCA_L0e44
   ori r6,r6,1024
   #|         if (d[1] & 0x08) b |= PAD_BUTTON_Y;
-GCA_L0e64:
-  andi. r18,r9,8
-  beq GCA_L0e70
+GCA_L0e44:
+  andi. r24,r10,8
+  beq GCA_L0e50
   ori r6,r6,2048
   #|         if (d[1] & 0x10) b |= PAD_BUTTON_LEFT;
-GCA_L0e70:
-  andi. r18,r9,16
-  beq GCA_L0e7c
+GCA_L0e50:
+  andi. r24,r10,16
+  beq GCA_L0e5c
   ori r6,r6,1
   #|         if (d[1] & 0x20) b |= PAD_BUTTON_RIGHT;
-GCA_L0e7c:
-  andi. r18,r9,32
-  beq GCA_L0e88
+GCA_L0e5c:
+  andi. r24,r10,32
+  beq GCA_L0e68
   ori r6,r6,2
   #|         if (d[1] & 0x40) b |= PAD_BUTTON_DOWN;
-GCA_L0e88:
-  andi. r18,r9,64
-  beq GCA_L0e94
+GCA_L0e68:
+  andi. r24,r10,64
+  beq GCA_L0e74
   ori r6,r6,4
   #|         if (d[1] & 0x80) b |= PAD_BUTTON_UP;
-GCA_L0e94:
-  andi. r9,r9,128
-  beq+ GCA_L0ea0
+GCA_L0e74:
+  andi. r10,r10,128
+  beq+ GCA_L0e80
   ori r6,r6,8
   #|         if (d[2] & 0x01) b |= PAD_BUTTON_START;
-GCA_L0ea0:
-  lbz r18,2(r8)
-  rlwinm r9,r18,12,19,19
+GCA_L0e80:
+  lbz r24,2(r9)
+  rlwinm r10,r24,12,19,19
   #|         if (d[2] & 0x02) b |= PAD_TRIGGER_Z;
-  andi. r16,r18,2
+  andi. r22,r24,2
   #|         if (d[2] & 0x01) b |= PAD_BUTTON_START;
-  or r6,r9,r6
-  mr r9,r6
+  or r6,r10,r6
+  mr r10,r6
   #|         if (d[2] & 0x02) b |= PAD_TRIGGER_Z;
-  beq GCA_L0ebc
-  ori r9,r6,16
+  beq GCA_L0e9c
+  ori r10,r6,16
   #|         if (d[2] & 0x04) b |= PAD_TRIGGER_R;
-GCA_L0ebc:
-  andi. r6,r18,4
-  beq GCA_L0ec8
-  ori r9,r9,32
+GCA_L0e9c:
+  andi. r6,r24,4
+  beq GCA_L0ea8
+  ori r10,r10,32
   #|         if (d[2] & 0x08) b |= PAD_TRIGGER_L;
-GCA_L0ec8:
-  andi. r18,r18,8
-  beq GCA_L0ed4
-  ori r9,r9,64
+GCA_L0ea8:
+  andi. r24,r24,8
+  beq GCA_L0eb4
+  ori r10,r10,64
   #|         if ((b & recal) == recal) {
-GCA_L0ed4:
-  rlwinm r6,r9,0,19,21
+GCA_L0eb4:
+  rlwinm r6,r10,0,19,21
   cmpwi r6,7168
-  beq GCA_L0ffc
+  beq GCA_L0fe4
   #|           recal_start[i] = 0;
   stw r28,0(r12)
   #|         if (!origin_valid[i]) {
-GCA_L0ee4:
-  word 0x5631063E                    # clrlwi r17,r17,24
-  cmpwi r17,0
-  beq GCA_L1014
-  #|         s->stickX = clamp_s8((int)d[3] - origin[i][0]);
-GCA_L0ef0:
-  lbz r6,1(r5)
-  word 0x5718063E                    # clrlwi r24,r24,24
-  #|         press_latch[i] |= b & ~prev_btn[i];
-  lhz r18,0(r4)
-  #|         s->stickX = clamp_s8((int)d[3] - origin[i][0]);
-  subf r24,r6,r24
-  #|         press_latch[i] |= b & ~prev_btn[i];
-  lhz r6,0(r3)
-  #|   return (s8)(v < -128 ? -128 : v > 127 ? 127 : v);
-  cmpwi r24,-128
-  #|         s->button = b;
-  sth r9,0(r7)
-  #|         press_latch[i] |= b & ~prev_btn[i];
-  andc r6,r9,r6
-  #|         prev_btn[i] = b;
-  sth r9,0(r3)
-  #|         press_latch[i] |= b & ~prev_btn[i];
-  or r6,r6,r18
-  sth r6,0(r4)
-  #|   return (s8)(v < -128 ? -128 : v > 127 ? 127 : v);
-  blt GCA_L108c
-  cmpwi r24,127
-  li r6,127
-  bgt GCA_L0f30
-  mr r6,r24
-  #|         s->stickY = clamp_s8((int)d[4] - origin[i][1]);
-GCA_L0f30:
-  lbz r9,2(r5)
+GCA_L0ec4:
   word 0x56F7063E                    # clrlwi r23,r23,24
+  cmpwi r23,0
+  beq GCA_L1018
+  #|         press_latch[i] |= b & ~prev_btn[i];
+GCA_L0ed0:
+  lhz r6,0(r3)
+  lhz r24,0(r4)
+  andc r6,r10,r6
+  #|         s->button = b;
+  sth r10,0(r7)
+  #|         press_latch[i] |= b & ~prev_btn[i];
+  or r6,r6,r24
+  #|         prev_btn[i] = b;
+  sth r10,0(r3)
+  #|         press_latch[i] |= b & ~prev_btn[i];
+  sth r6,0(r4)
   #|         s->stickX = clamp_s8((int)d[3] - origin[i][0]);
+  lbz r10,1(r5)
+  lbz r6,3(r9)
+  subf r10,r10,r6
+  #|   return (s8)(v < -128 ? -128 : v > 127 ? 127 : v);
+  cmpwi r10,-128
+  blt GCA_L1060
+  cmpwi r10,127
+  li r6,127
+  bgt GCA_L0f10
+  mr r6,r10
+  #|         s->stickX = clamp_s8((int)d[3] - origin[i][0]);
+GCA_L0f10:
   stb r6,2(r7)
   #|         s->stickY = clamp_s8((int)d[4] - origin[i][1]);
-  subf r9,r9,r23
+  lbz r10,2(r5)
+  lbz r6,4(r9)
+  subf r10,r10,r6
   #|   return (s8)(v < -128 ? -128 : v > 127 ? 127 : v);
-  cmpwi r9,-128
-  blt GCA_L107c
-  cmpwi r9,127
+  cmpwi r10,-128
+  blt GCA_L1050
+  cmpwi r10,127
   li r6,127
-  bgt GCA_L0f58
-  mr r6,r9
-  #|         s->substickX = clamp_s8((int)d[5] - origin[i][2]);
-GCA_L0f58:
-  lbz r9,3(r5)
-  word 0x56B5063E                    # clrlwi r21,r21,24
+  bgt GCA_L0f38
+  mr r6,r10
   #|         s->stickY = clamp_s8((int)d[4] - origin[i][1]);
+GCA_L0f38:
   stb r6,3(r7)
   #|         s->substickX = clamp_s8((int)d[5] - origin[i][2]);
-  subf r21,r9,r21
+  lbz r10,3(r5)
+  lbz r6,5(r9)
+  subf r10,r10,r6
   #|   return (s8)(v < -128 ? -128 : v > 127 ? 127 : v);
-  cmpwi r21,-128
-  blt GCA_L1084
-  cmpwi r21,127
+  cmpwi r10,-128
+  blt GCA_L1058
+  cmpwi r10,127
   li r6,127
-  bgt GCA_L0f80
-  mr r6,r21
-  #|         s->substickY = clamp_s8((int)d[6] - origin[i][3]);
-GCA_L0f80:
-  lbz r9,4(r5)
-  word 0x56D6063E                    # clrlwi r22,r22,24
+  bgt GCA_L0f60
+  mr r6,r10
   #|         s->substickX = clamp_s8((int)d[5] - origin[i][2]);
+GCA_L0f60:
   stb r6,4(r7)
   #|         s->substickY = clamp_s8((int)d[6] - origin[i][3]);
-  subf r22,r9,r22
+  lbz r10,4(r5)
+  lbz r6,6(r9)
+  subf r10,r10,r6
   #|   return (s8)(v < -128 ? -128 : v > 127 ? 127 : v);
-  cmpwi r22,-128
-  blt GCA_L1094
-  cmpwi r22,127
+  cmpwi r10,-128
+  blt GCA_L1068
+  cmpwi r10,127
   li r6,127
-  bgt GCA_L0fa8
-  mr r6,r22
-  #|         s->triggerL = clamp_u8((int)d[7] - origin[i][4]);
-GCA_L0fa8:
-  lbz r24,5(r5)
-  word 0x5689063E                    # clrlwi r9,r20,24
+  bgt GCA_L0f88
+  mr r6,r10
   #|         s->substickY = clamp_s8((int)d[6] - origin[i][3]);
+GCA_L0f88:
   stb r6,5(r7)
   #|   return (u8)(v < 0 ? 0 : v > 255 ? 255 : v);
-  li r6,0
+  li r10,0
   #|         s->triggerL = clamp_u8((int)d[7] - origin[i][4]);
-  word 0x5717063E                    # clrlwi r23,r24,24
+  lbz r6,5(r5)
+  lbz r24,7(r9)
+  word 0x54D7063E                    # clrlwi r23,r6,24
+  word 0x5716063E                    # clrlwi r22,r24,24
   #|   return (u8)(v < 0 ? 0 : v > 255 ? 255 : v);
-  cmpw r9,r23
-  blt GCA_L0fc8
-  subf r6,r24,r20
-  #|         s->triggerR = clamp_u8((int)d[8] - origin[i][5]);
-GCA_L0fc8:
-  lbz r24,6(r5)
-  word 0x5669063E                    # clrlwi r9,r19,24
+  cmpw r22,r23
+  blt GCA_L0fac
+  subf r10,r6,r24
   #|         s->triggerL = clamp_u8((int)d[7] - origin[i][4]);
-  stb r6,6(r7)
+GCA_L0fac:
+  stb r10,6(r7)
   #|   return (u8)(v < 0 ? 0 : v > 255 ? 255 : v);
-  li r6,0
+  li r10,0
   #|         s->triggerR = clamp_u8((int)d[8] - origin[i][5]);
-  word 0x5717063E                    # clrlwi r23,r24,24
+  lbz r6,6(r5)
+  lbz r24,8(r9)
+  word 0x54D7063E                    # clrlwi r23,r6,24
+  word 0x5716063E                    # clrlwi r22,r24,24
   #|   return (u8)(v < 0 ? 0 : v > 255 ? 255 : v);
-  cmpw r9,r23
-  blt GCA_L0fe8
-  subf r6,r24,r19
+  cmpw r22,r23
+  blt GCA_L0fd0
+  subf r10,r6,r24
   #|         s->triggerR = clamp_u8((int)d[8] - origin[i][5]);
-GCA_L0fe8:
-  stb r6,7(r7)
+GCA_L0fd0:
+  stb r10,7(r7)
   #|         s->analogA = 0;
-  stb r10,8(r7)
+  stb r8,8(r7)
   #|         s->analogB = 0;
-  stb r10,9(r7)
+  stb r8,9(r7)
   #|         s->err = PAD_ERR_NONE;
-  stb r10,10(r7)
-  b GCA_L0db8
+  stb r8,10(r7)
+  b GCA_L0db0
   #|           if (recal_start[i] == 0) recal_start[i] = now | 1;
-GCA_L0ffc:
+GCA_L0fe4:
   lwz r6,0(r12)
   cmpwi r6,0
-  bne GCA_L1058
+  bne GCA_L0ffc
   ori r6,r29,1
   stw r6,0(r12)
-  b GCA_L0ee4
-GCA_L1014:
-  stw r15,12(r1)
+  b GCA_L0ec4
+  #|           else if (now - recal_start[i] > RECAL_HOLD) {
+GCA_L0ffc:
+  lis r24,2780
+  subf r6,r6,r29
+  ori r24,r24,59920
+  cmplw r6,r24
+  ble GCA_L0ec4
+  #|             recal_start[i] = now | 1;
+  ori r6,r29,1
+  stw r6,0(r12)
   #|           for (int k = 0; k < 6; k++) origin[i][k] = d[3 + k];
 GCA_L1018:
-  addi r17,r8,2
+  addi r24,r9,2
   #| static s32 onDevUsbPoll(s32 ret, void *usr) {
   mr r6,r5
-  li r18,6
+  li r23,6
   #|           for (int k = 0; k < 6; k++) origin[i][k] = d[3 + k];
 GCA_L1024:
-  lbz r15,1(r17)
-  addi r16,r17,1
-  addic. r18,r18,-2
-  lbz r17,2(r17)
-  stb r15,1(r6)
+  lbz r22,1(r24)
+  addic. r23,r23,-2
+  addi r24,r24,2
   addi r6,r6,2
-  stb r17,0(r6)
-  addi r17,r16,1
+  stb r22,-1(r6)
+  lbz r22,0(r24)
+  stb r22,0(r6)
   bne+ GCA_L1024
   #|           origin_valid[i] = 1;
   li r6,1
   stb r6,0(r11)
-  lwz r15,12(r1)
-  b GCA_L0ef0
-  #|           else if (now - recal_start[i] > RECAL_HOLD) {
-GCA_L1058:
-  lis r18,2780
-  subf r6,r6,r29
-  ori r18,r18,59920
-  cmplw r6,r18
-  ble GCA_L0ee4
-  #|             recal_start[i] = now | 1;
-  ori r6,r29,1
-  stw r15,12(r1)
-  stw r6,0(r12)
-  #|         if (!origin_valid[i]) {
-  b GCA_L1018
+  b GCA_L0ed0
   #|   return (s8)(v < -128 ? -128 : v > 127 ? 127 : v);
-GCA_L107c:
+GCA_L1050:
   li r6,-128
-  b GCA_L0f58
-GCA_L1084:
+  b GCA_L0f38
+GCA_L1058:
   li r6,-128
-  b GCA_L0f80
-GCA_L108c:
+  b GCA_L0f60
+GCA_L1060:
   li r6,-128
-  b GCA_L0f30
-GCA_L1094:
+  b GCA_L0f10
+GCA_L1068:
   li r6,-128
-  b GCA_L0fa8
+  b GCA_L0f88
   #| static s32 onDevUsbChange5(s32 ret, void *usr) {
 
 # ---- onDevUsbChange5 ---------------------------------------------
 GCA_onDevUsbChange5:
   stwu r1,-16(r1)
   mflr r0
-  word 0x429F0005                    # bcl 20,4*cr7+so,10a8 <onDevUsbChange5+0xc>
+  word 0x429F0005                    # bcl 20,4*cr7+so,107c <onDevUsbChange5+0xc>
   #|   if (ret >= 0) ret = sendAttach5(onDevUsbAttach5, (void *)ret);
-GCA_L10a8:
+GCA_L107c:
   mr. r10,r3
   #| static s32 onDevUsbChange5(s32 ret, void *usr) {
   stw r30,8(r1)
   mflr r30
   addis r30,r30,1
   stw r31,12(r1)
-  addi r30,r30,-27072
+  addi r30,r30,-26956
   stw r0,20(r1)
   #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID5_IOCTL_ATTACH_FINISH, NULL, 0, NULL, 0, cb, usr);
   lwz r31,-32752(r30)
   #|   if (ret >= 0) ret = sendAttach5(onDevUsbAttach5, (void *)ret);
-  blt GCA_L1100
+  blt GCA_L10d4
   #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID5_IOCTL_ATTACH_FINISH, NULL, 0, NULL, 0, cb, usr);
   lis r9,-32735
   lwz r3,0(r31)
@@ -1737,16 +1668,16 @@ GCA_L10a8:
   li r8,0
   mtctr r9
   li r7,0
-  lwz r9,-32712(r30)
+  lwz r9,-32716(r30)
   li r6,0
   li r5,0
   li r4,6
   bctrl
   #|   if (ret) onFatal(6, ret);
   mr. r10,r3
-  beq GCA_L1150
+  beq GCA_L1124
   #|   if (dev_usb_hid_fd >= 0) {
-GCA_L1100:
+GCA_L10d4:
   lwz r3,0(r31)
   #|   DIAG_ERR(method, err);
   li r5,6
@@ -1767,7 +1698,7 @@ GCA_L1100:
   #|   adapter_live = 0;
   stb r7,57(r9)
   #|   if (dev_usb_hid_fd >= 0) {
-  blt GCA_L1150
+  blt GCA_L1124
   #|     IOS_CloseAsync(fd, callbackIgnore, NULL);
   lis r10,-32735
   #|     dev_usb_hid_fd = -1;
@@ -1782,7 +1713,7 @@ GCA_L1100:
   li r5,0
   bctrl
   #| }
-GCA_L1150:
+GCA_L1124:
   lwz r0,20(r1)
   li r3,0
   lwz r30,8(r1)
@@ -1796,77 +1727,77 @@ GCA_L1150:
 GCA_onDevUsbAttach5:
   stwu r1,-24(r1)
   mflr r0
-  word 0x429F0005                    # bcl 20,4*cr7+so,1178 <onDevUsbAttach5+0xc>
+  word 0x429F0005                    # bcl 20,4*cr7+so,114c <onDevUsbAttach5+0xc>
   #|   if (ret == 0) {
-GCA_L1178:
+GCA_L114c:
   mr. r10,r3
   #| static s32 onDevUsbAttach5(s32 ret, void *vcount) {
   stw r30,16(r1)
   mflr r30
   addis r30,r30,1
   stw r29,12(r1)
-  addi r30,r30,-27280
+  addi r30,r30,-27164
   stw r0,28(r1)
   stw r31,20(r1)
   #|       u32 device_id = hid5_devices[i].id;
   lwz r29,-32768(r30)
   #|   if (ret == 0) {
-  bne GCA_L12ac
+  bne GCA_L1280
   #|       u32 device_id = hid5_devices[i].id;
-  lwz r7,376(r29)
+  lwz r7,200(r29)
   #|       if (hid5_devices[i].vid_pid == WUP_028_ID) {
   li r9,16
   lis r6,1406
   mtctr r9
   ori r6,r6,823
   mr r9,r7
-  b GCA_L11e4
-GCA_L11bc:
+  b GCA_L11b8
+GCA_L1190:
   lwz r8,4(r9)
   cmpw r8,r6
-  beq GCA_L12b4
+  beq GCA_L1288
   #|     for (int i = 0; i < HID5_DEVICE_CHANGE_SIZE && i < count; i++) {
   addi r9,r9,12
-  ble cr7,GCA_L11f8
+  ble cr7,GCA_L11cc
   #|       if (hid5_devices[i].vid_pid == WUP_028_ID) {
   lwz r8,4(r9)
   cmpw r8,r6
-  beq GCA_L12b4
+  beq GCA_L1288
   #|     for (int i = 0; i < HID5_DEVICE_CHANGE_SIZE && i < count; i++) {
   addi r9,r9,12
-  bdz GCA_L11f8
-GCA_L11e4:
+  bdz GCA_L11cc
+GCA_L11b8:
   cmpw r4,r10
   addi r8,r10,1
   cmpw cr7,r4,r8
   addi r10,r10,2
-  bgt+ GCA_L11bc
-GCA_L11f8:
+  bgt+ GCA_L1190
+GCA_L11cc:
   lwz r31,-32752(r30)
   #|     if (!found) { gcn_adapter_id = (u32)-1; adapter_live = 0; }
-GCA_L11fc:
+GCA_L11d0:
   li r10,-1
   li r9,0
   stw r10,4(r31)
   stb r9,57(r29)
   #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID5_IOCTL_GET_DEVICE_CHANGE, NULL, 0,
-GCA_L120c:
+GCA_L11e0:
   lis r9,-32735
   li r10,0
   ori r9,r9,11272
   lwz r3,0(r31)
   mtctr r9
   li r8,384
-  lwz r9,-32704(r30)
+  lwz r9,-32708(r30)
   li r6,0
   li r5,0
   li r4,1
   bctrl
   #|   if (ret) onFatal(7, ret);
   mr. r10,r3
-  beq GCA_L128c
+  beq GCA_L1260
   #|   if (dev_usb_hid_fd >= 0) {
-GCA_L1240:
+GCA_L1214:
   lwz r3,0(r31)
   #|   DIAG_ERR(method, err);
   li r6,7
@@ -1885,7 +1816,7 @@ GCA_L1240:
   #|   adapter_live = 0;
   stb r8,57(r29)
   #|   if (dev_usb_hid_fd >= 0) {
-  blt GCA_L128c
+  blt GCA_L1260
   #|     IOS_CloseAsync(fd, callbackIgnore, NULL);
   lis r10,-32735
   #|     dev_usb_hid_fd = -1;
@@ -1900,7 +1831,7 @@ GCA_L1240:
   li r5,0
   bctrl
   #| }
-GCA_L128c:
+GCA_L1260:
   lwz r0,28(r1)
   li r3,0
   lwz r29,12(r1)
@@ -1909,18 +1840,18 @@ GCA_L128c:
   lwz r31,20(r1)
   addi r1,r1,24
   blr
-GCA_L12ac:
+GCA_L1280:
   lwz r31,-32752(r30)
-  b GCA_L1240
+  b GCA_L1214
   #|         if (gcn_adapter_id != device_id) {
-GCA_L12b4:
+GCA_L1288:
   lwz r31,-32752(r30)
   #|       u32 device_id = hid5_devices[i].id;
   lwz r9,0(r9)
   #|         if (gcn_adapter_id != device_id) {
   lwz r10,4(r31)
   cmplw r10,r9
-  beq GCA_L120c
+  beq GCA_L11e0
   #|           DIAG_STAGE(6);
   lwz r8,-32764(r30)
   li r7,6
@@ -1936,9 +1867,9 @@ GCA_L12b4:
   #|   for (int i = 0; i < 8; i++) hid5_buffer[i] = 0;
   mtctr r9
   addi r9,r5,-4
-GCA_L12ec:
+GCA_L12c0:
   stwu r10,4(r9)
-  bdnz+ GCA_L12ec
+  bdnz+ GCA_L12c0
   #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID5_IOCTL_SET_RESUME, hid5_buffer, 0x20,
   lis r9,-32735
   #|   hid5_buffer[0] = gcn_adapter_id;
@@ -1957,39 +1888,39 @@ GCA_L12ec:
   stw r9,8(r5)
   #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID5_IOCTL_SET_RESUME, hid5_buffer, 0x20,
   li r10,0
-  lwz r9,-32708(r30)
+  lwz r9,-32712(r30)
   li r6,32
   lwz r3,0(r31)
   li r4,16
   bctrl
   #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID5_IOCTL_GET_DEVICE_CHANGE, NULL, 0,
-  lwz r7,376(r29)
+  lwz r7,200(r29)
   #|           if (sendResume5(onDevUsbResume5)) found = 0;
   cmpwi r3,0
-  bne GCA_L11fc
-  b GCA_L120c
+  bne GCA_L11d0
+  b GCA_L11e0
   #| static s32 onDevGetVersion5(s32 ret, void *usr) {
 
 # ---- onDevGetVersion5 --------------------------------------------
 GCA_onDevGetVersion5:
   stwu r1,-16(r1)
   mflr r0
-  word 0x429F0005                    # bcl 20,4*cr7+so,134c <onDevGetVersion5+0xc>
+  word 0x429F0005                    # bcl 20,4*cr7+so,1320 <onDevGetVersion5+0xc>
   #|   if (ret == 0 && hid5_buffer[0] == HID5_VERSION) {
-GCA_L134c:
+GCA_L1320:
   mr. r9,r3
   #| static s32 onDevGetVersion5(s32 ret, void *usr) {
   stw r30,8(r1)
   mflr r30
   addis r30,r30,1
   stw r31,12(r1)
-  addi r30,r30,-27748
+  addi r30,r30,-27632
   stw r0,20(r1)
   #|   if (ret == 0 && hid5_buffer[0] == HID5_VERSION) {
   lwz r31,-32768(r30)
-  beq GCA_L13dc
+  beq GCA_L13b0
   #|   if (dev_usb_hid_fd >= 0) {
-GCA_L1370:
+GCA_L1344:
   lwz r8,-32752(r30)
   #|   DIAG_ERR(method, err);
   li r5,4
@@ -2011,7 +1942,7 @@ GCA_L1370:
   #|   adapter_live = 0;
   stb r7,57(r31)
   #|   if (dev_usb_hid_fd >= 0) {
-  blt GCA_L13c0
+  blt GCA_L1394
   #|     IOS_CloseAsync(fd, callbackIgnore, NULL);
   lis r10,-32735
   #|     dev_usb_hid_fd = -1;
@@ -2026,7 +1957,7 @@ GCA_L1370:
   li r5,0
   bctrl
   #| }
-GCA_L13c0:
+GCA_L1394:
   lwz r0,20(r1)
   li r3,0
   lwz r30,8(r1)
@@ -2035,7 +1966,7 @@ GCA_L13c0:
   addi r1,r1,16
   blr
   #|   if (ret == 0 && hid5_buffer[0] == HID5_VERSION) {
-GCA_L13dc:
+GCA_L13b0:
   lis r9,5
   ori r10,r9,1
   lwz r9,136(r31)
@@ -2043,12 +1974,12 @@ GCA_L13dc:
   lwz r9,0(r9)
   #|   if (ret == 0 && hid5_buffer[0] == HID5_VERSION) {
   cmpw r9,r10
-  beq GCA_L1418
+  beq GCA_L13ec
   #|   if (ret) onFatal(4, ret);
   cmpwi r9,0
-  bne GCA_L1370
+  bne GCA_L1344
   #| }
-GCA_L13fc:
+GCA_L13d0:
   lwz r0,20(r1)
   li r3,0
   lwz r30,8(r1)
@@ -2057,7 +1988,7 @@ GCA_L13fc:
   addi r1,r1,16
   blr
   #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID5_IOCTL_GET_DEVICE_CHANGE, NULL, 0,
-GCA_L1418:
+GCA_L13ec:
   lis r8,-32735
   #|     DIAG_STAGE(5);
   lwz r10,-32764(r30)
@@ -2070,218 +2001,24 @@ GCA_L1418:
   #|     DIAG_STAGE(5);
   li r8,5
   #|     version = 5;
-  stb r7,177(r31)
+  stb r7,145(r31)
   #|     DIAG_STAGE(5);
   stw r8,4(r10)
   #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID5_IOCTL_GET_DEVICE_CHANGE, NULL, 0,
   li r6,0
   lwz r3,0(r9)
   li r10,0
-  lwz r9,-32704(r30)
+  lwz r9,-32708(r30)
   li r8,384
-  lwz r7,376(r31)
+  lwz r7,200(r31)
   li r5,0
   li r4,1
   bctrl
   mr r9,r3
   #|   if (ret) onFatal(4, ret);
   cmpwi r9,0
-  beq+ GCA_L13fc
-  b GCA_L1370
-  #| static s32 onDevUsbChange4(s32 ret, void *usr) {
-
-# ---- onDevUsbChange4 ---------------------------------------------
-GCA_onDevUsbChange4:
-  stwu r1,-24(r1)
-  mflr r0
-  word 0x429F0005                    # bcl 20,4*cr7+so,147c <onDevUsbChange4+0xc>
-  #|   if (ret >= 0) {
-GCA_L147c:
-  mr. r9,r3
-  #| static s32 onDevUsbChange4(s32 ret, void *usr) {
-  stw r30,16(r1)
-  mflr r30
-  addis r30,r30,1
-  stw r0,28(r1)
-  stw r29,12(r1)
-  addi r30,r30,-28052
-  stw r31,20(r1)
-  #|   if (ret >= 0) {
-  blt GCA_L162c
-  #|       if (hid4_devices[i] == WUP_028_DESCRIPTOR_SIZE && hid4_devices[i + 4] == WUP_028_ID) {
-  lis r6,1406
-  lwz r31,-32768(r30)
-  ori r6,r6,823
-  #|     for (int i = 0; i < HID4_DEVICE_CHANGE_SIZE - 4 && hid4_devices[i] != 0 &&
-  li r9,0
-  b GCA_L14c0
-  #|          i += hid4_devices[i] / 4) {
-GCA_L14b4:
-  add r9,r7,r9
-  #|     for (int i = 0; i < HID4_DEVICE_CHANGE_SIZE - 4 && hid4_devices[i] != 0 &&
-  cmpwi r9,379
-  bgt GCA_L1574
-GCA_L14c0:
-  slwi r10,r9,2
-  add r10,r31,r10
-  lwz r10,384(r10)
-  addi r8,r10,-1
-  #|       if (hid4_devices[i] == WUP_028_DESCRIPTOR_SIZE && hid4_devices[i + 4] == WUP_028_ID) {
-  cmplwi cr7,r10,68
-  #|     for (int i = 0; i < HID4_DEVICE_CHANGE_SIZE - 4 && hid4_devices[i] != 0 &&
-  cmplwi r8,1534
-  #|          i += hid4_devices[i] / 4) {
-  srwi r7,r10,2
-  #|     for (int i = 0; i < HID4_DEVICE_CHANGE_SIZE - 4 && hid4_devices[i] != 0 &&
-  bgt GCA_L1574
-  #|       if (hid4_devices[i] == WUP_028_DESCRIPTOR_SIZE && hid4_devices[i + 4] == WUP_028_ID) {
-  bne+ cr7,GCA_L14b4
-  slwi r10,r9,2
-  add r10,r31,r10
-  lwz r10,400(r10)
-  cmpw r10,r6
-  bne+ GCA_L14b4
-  #|         if (gcn_adapter_id != device_id) {
-  lwz r29,-32752(r30)
-  #|       u32 device_id = hid4_devices[i + 1];
-  slwi r9,r9,2
-  add r9,r31,r9
-  #|         if (gcn_adapter_id != device_id) {
-  lwz r10,4(r29)
-  #|       u32 device_id = hid4_devices[i + 1];
-  lwz r9,388(r9)
-  #|         if (gcn_adapter_id != device_id) {
-  cmplw r10,r9
-  beq GCA_L1588
-  #|           DIAG_STAGE(6);
-  lwz r10,-32764(r30)
-  li r8,6
-  #|           gcn_adapter_id = device_id;
-  stw r9,4(r29)
-  #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_INTERRUPT_OUT,
-  lis r9,-32735
-  #|           DIAG_STAGE(6);
-  stw r8,4(r10)
-  #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_INTERRUPT_OUT,
-  ori r9,r9,11272
-  #|   init_msg4.device = gcn_adapter_id;
-  lwz r8,-32728(r30)
-  #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_INTERRUPT_OUT,
-  mtctr r9
-  #|   init_msg4.device = gcn_adapter_id;
-  lwz r7,4(r29)
-  #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_INTERRUPT_OUT,
-  li r10,0
-  addi r5,r8,64
-  lwz r9,-32740(r30)
-  #|   init_msg4.device = gcn_adapter_id;
-  stw r7,80(r8)
-  #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_INTERRUPT_OUT,
-  li r6,32
-  lwz r3,0(r29)
-  li r8,0
-  li r7,0
-  li r4,4
-  bctrl
-  #|           if (sendInit4(onDevUsbInit)) gcn_adapter_id = (u32)-1;
-  cmpwi r3,0
-  beq GCA_L1588
-  li r9,-1
-  stw r9,4(r29)
-  #|     if (!found) { gcn_adapter_id = (u32)-1; adapter_live = 0; }
-  b GCA_L1588
-GCA_L1574:
-  lwz r29,-32752(r30)
-  li r10,-1
-  li r9,0
-  stw r10,4(r29)
-  stb r9,57(r31)
-  #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_GET_DEVICE_CHANGE, NULL, 0,
-GCA_L1588:
-  lis r9,-32735
-  lwz r3,0(r29)
-  ori r9,r9,11272
-  li r10,0
-  mtctr r9
-  li r8,1536
-  lwz r9,-32700(r30)
-  addi r7,r31,384
-  li r6,0
-  li r5,0
-  li r4,0
-  bctrl
-  #|   if (ret) onFatal(5, ret);
-  mr. r9,r3
-  beq GCA_L160c
-  #|   if (dev_usb_hid_fd >= 0) {
-  lwz r3,0(r29)
-  #|   DIAG_ERR(method, err);
-  li r6,5
-  lwz r10,-32764(r30)
-  #|   usb_failed = 1;
-  li r7,1
-  #|   if (dev_usb_hid_fd >= 0) {
-  cmpwi r3,0
-  #|   adapter_live = 0;
-  li r8,0
-  #|   DIAG_ERR(method, err);
-  stw r6,8(r10)
-  stw r9,12(r10)
-  #|   usb_failed = 1;
-  stb r7,56(r31)
-  #|   adapter_live = 0;
-  stb r8,57(r31)
-  #|   if (dev_usb_hid_fd >= 0) {
-  blt GCA_L160c
-  #|     IOS_CloseAsync(fd, callbackIgnore, NULL);
-GCA_L15ec:
-  lis r10,-32735
-  #|     dev_usb_hid_fd = -1;
-  li r9,-1
-  #|     IOS_CloseAsync(fd, callbackIgnore, NULL);
-  ori r10,r10,9416
-  #|     dev_usb_hid_fd = -1;
-  stw r9,0(r29)
-  #|     IOS_CloseAsync(fd, callbackIgnore, NULL);
-  lwz r4,-32748(r30)
-  mtctr r10
-  li r5,0
-  bctrl
-  #| }
-GCA_L160c:
-  lwz r0,28(r1)
-  li r3,0
-  lwz r29,12(r1)
-  lwz r30,16(r1)
-  mtlr r0
-  lwz r31,20(r1)
-  addi r1,r1,24
-  blr
-GCA_L162c:
-  lwz r29,-32752(r30)
-  #|   DIAG_ERR(method, err);
-  li r6,5
-  lwz r31,-32768(r30)
-  #|   usb_failed = 1;
-  li r7,1
-  #|   if (dev_usb_hid_fd >= 0) {
-  lwz r3,0(r29)
-  #|   adapter_live = 0;
-  li r8,0
-  #|   DIAG_ERR(method, err);
-  lwz r10,-32764(r30)
-  #|   if (dev_usb_hid_fd >= 0) {
-  cmpwi r3,0
-  #|   DIAG_ERR(method, err);
-  stw r6,8(r10)
-  stw r9,12(r10)
-  #|   usb_failed = 1;
-  stb r7,56(r31)
-  #|   adapter_live = 0;
-  stb r8,57(r31)
-  #|   if (dev_usb_hid_fd >= 0) {
-  bge+ GCA_L15ec
-  b GCA_L160c
+  beq+ GCA_L13d0
+  b GCA_L1344
   #|   if (ret == HID4_VERSION) {
 
 # ---- onDevGetVersion4 --------------------------------------------
@@ -2293,41 +2030,41 @@ GCA_onDevGetVersion4:
   cmpwi r9,1
   #| static s32 onDevGetVersion4(s32 ret, void *usr) {
   mflr r0
-  word 0x429F0005                    # bcl 20,4*cr7+so,1678 <onDevGetVersion4+0x14>
-GCA_L1678:
+  word 0x429F0005                    # bcl 20,4*cr7+so,1458 <onDevGetVersion4+0x14>
+GCA_L1458:
   stw r30,24(r1)
   mflr r30
   stw r0,36(r1)
   addis r30,r30,1
   stw r28,16(r1)
   stw r29,20(r1)
-  addi r30,r30,-28560
+  addi r30,r30,-27944
   #|   if (ret == HID4_VERSION) {
-  beq GCA_L1830
+  beq GCA_L1610
   #|   if ((fn[0] & 0xFFFF0000) != 0x806D0000 || fn[1] != 0x4E800020) return 0;
   lis r9,-32735
   lis r8,-32659
   ori r9,r9,6880
   stw r31,28(r1)
-  lwz r29,0(r9)
+  lwz r28,0(r9)
   mr r31,r3
-  word 0x57A7001E                    # clrrwi r7,r29,16
+  word 0x5787001E                    # clrrwi r7,r28,16
   cmpw r7,r8
-  beq GCA_L1744
+  beq GCA_L1524
   #|     DIAG_ERR(3, ret);
-GCA_L16bc:
+GCA_L149c:
   lwz r9,-32764(r30)
   li r8,3
-  lwz r28,-32768(r30)
+  lwz r29,-32768(r30)
   li r10,-1
   stw r8,8(r9)
-  lwz r29,-32752(r30)
+  lwz r28,-32752(r30)
   stw r31,12(r9)
   #|   if (ret) onFatal(3, ret);
   lwz r31,28(r1)
   #|   if (dev_usb_hid_fd >= 0) {
-GCA_L16dc:
-  lwz r3,0(r29)
+GCA_L14bc:
+  lwz r3,0(r28)
   #|   DIAG_ERR(method, err);
   li r6,3
   #|   usb_failed = 1;
@@ -2340,12 +2077,260 @@ GCA_L16dc:
   stw r6,8(r9)
   stw r10,12(r9)
   #|   usb_failed = 1;
-  stb r7,56(r28)
+  stb r7,56(r29)
   #|   adapter_live = 0;
-  stb r8,57(r28)
+  stb r8,57(r29)
   #|   if (dev_usb_hid_fd >= 0) {
-  blt GCA_L1724
+  blt GCA_L1504
   #|     IOS_CloseAsync(fd, callbackIgnore, NULL);
+  lis r10,-32735
+  #|     dev_usb_hid_fd = -1;
+  li r9,-1
+  #|     IOS_CloseAsync(fd, callbackIgnore, NULL);
+  ori r10,r10,9416
+  #|     dev_usb_hid_fd = -1;
+  stw r9,0(r28)
+  #|     IOS_CloseAsync(fd, callbackIgnore, NULL);
+  lwz r4,-32748(r30)
+  mtctr r10
+  li r5,0
+  bctrl
+  #| }
+GCA_L1504:
+  lwz r0,36(r1)
+  li r3,0
+  lwz r28,16(r1)
+  lwz r29,20(r1)
+  mtlr r0
+  lwz r30,24(r1)
+  addi r1,r1,32
+  blr
+  #|   if ((fn[0] & 0xFFFF0000) != 0x806D0000 || fn[1] != 0x4E800020) return 0;
+GCA_L1524:
+  lwz r7,4(r9)
+  lis r8,20096
+  ori r8,r8,32
+  cmpw r7,r8
+  bne GCA_L149c
+  stw r27,12(r1)
+  #|   __asm__ volatile("mr %0, 13" : "=r"(sda));
+  mr r27,r13
+  #|   u8 *lo = (u8 *)IPCGetBufferLo();
+  addi r9,r9,8
+  #|   u8 **hi_ptr = (u8 **)(sda + (s32)(short)(fn[0] & 0xFFFF));
+  extsh r28,r28
+  #|   u8 *lo = (u8 *)IPCGetBufferLo();
+  mtctr r9
+  #|   u8 *hi = *hi_ptr;
+  lwzx r29,r28,r27
+  #|   u8 *lo = (u8 *)IPCGetBufferLo();
+  bctrl
+  #|   if (((u32)hi & 0xF0000000) != 0x90000000) return 0;
+  word 0x57AA0006                    # clrrwi r10,r29,28
+  lis r9,-28672
+  cmpw r10,r9
+  bne GCA_L1674
+  #|   if ((u32)hi < (u32)lo || (u32)hi - (u32)lo < need + 0x100) return 0;
+  cmplw r29,r3
+  blt GCA_L1674
+  subf r3,r3,r29
+  cmplwi r3,1151
+  ble GCA_L1674
+  #|   u8 *base = (u8 *)(((u32)hi - need) & ~0x1F);
+  addi r3,r29,-896
+  #|   hid5_devices = (struct hid5_device *)base;
+  lwz r29,-32768(r30)
+  #|   u8 *base = (u8 *)(((u32)hi - need) & ~0x1F);
+  word 0x54630034                    # clrrwi r3,r3,5
+  #|   while (n--) *b++ = 0;
+  li r8,224
+  #|   hid5_buffer = (u32 *)(base + sizeof(struct hid5_device) * HID5_DEVICE_CHANGE_SIZE);
+  addi r9,r3,384
+  #|   *hi_ptr = base;
+  stwx r3,r28,r27
+  #|   hid5_devices = (struct hid5_device *)base;
+  stw r3,200(r29)
+  #|   while (n--) *b++ = 0;
+  li r10,0
+  #|   hid5_buffer = (u32 *)(base + sizeof(struct hid5_device) * HID5_DEVICE_CHANGE_SIZE);
+  stw r9,136(r29)
+  #|   while (n--) *b++ = 0;
+  mtctr r8
+  #|   u8 *b = (u8 *)p;
+  mr r9,r3
+  #|   while (n--) *b++ = 0;
+GCA_L15a4:
+  stb r10,0(r9)
+  addi r9,r9,4
+  stb r10,-3(r9)
+  stb r10,-2(r9)
+  stb r10,-1(r9)
+  bdnz+ GCA_L15a4
+  #|   DCFlushRange(base, need);
+  lis r9,-32739
+  li r4,896
+  ori r9,r9,30440
+  mtctr r9
+  bctrl
+  #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID5_IOCTL_GET_VERSION, NULL, 0,
+  lwz r28,-32752(r30)
+  lis r9,-32735
+  lwz r7,136(r29)
+  ori r9,r9,11272
+  lwz r3,0(r28)
+  mtctr r9
+  li r10,0
+  lwz r9,-32700(r30)
+  li r8,32
+  li r6,0
+  li r5,0
+  li r4,0
+  bctrl
+  lwz r27,12(r1)
+  lwz r31,28(r1)
+  b GCA_L1660
+  #|     version = 4;
+GCA_L1610:
+  lwz r29,-32768(r30)
+  #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_GET_DEVICE_CHANGE, NULL, 0,
+  lis r10,-32735
+  #|     DIAG_STAGE(4);
+  lwz r9,-32764(r30)
+  #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_GET_DEVICE_CHANGE, NULL, 0,
+  ori r10,r10,11272
+  #|                         hid4_devices, sizeof(hid4_devices), cb, NULL);
+  lwz r7,140(r29)
+  #|     version = 4;
+  li r8,4
+  #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_GET_DEVICE_CHANGE, NULL, 0,
+  lwz r28,-32752(r30)
+  mtctr r10
+  #|     DIAG_STAGE(4);
+  li r10,4
+  #|     version = 4;
+  stb r8,145(r29)
+  #|     DIAG_STAGE(4);
+  stw r10,4(r9)
+  #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_GET_DEVICE_CHANGE, NULL, 0,
+  addi r7,r7,128
+  lwz r3,0(r28)
+  li r10,0
+  lwz r9,-32704(r30)
+  li r8,1536
+  li r6,0
+  li r5,0
+  li r4,0
+  bctrl
+  #|   if (ret) onFatal(3, ret);
+GCA_L1660:
+  cmpwi r3,0
+  beq GCA_L1504
+  lwz r9,-32764(r30)
+  #|   DIAG_ERR(method, err);
+  mr r10,r3
+  b GCA_L14bc
+GCA_L1674:
+  lwz r27,12(r1)
+  b GCA_L149c
+  #| static s32 onDevUsbChange4(s32 ret, void *usr) {
+
+# ---- onDevUsbChange4 ---------------------------------------------
+GCA_onDevUsbChange4:
+  stwu r1,-24(r1)
+  mflr r0
+  word 0x429F0005                    # bcl 20,4*cr7+so,1688 <onDevUsbChange4+0xc>
+  #|   if (ret >= 0) {
+GCA_L1688:
+  mr. r9,r3
+  #| static s32 onDevUsbChange4(s32 ret, void *usr) {
+  stw r30,16(r1)
+  mflr r30
+  addis r30,r30,1
+  stw r31,20(r1)
+  addi r30,r30,-28504
+  stw r0,28(r1)
+  stw r29,12(r1)
+  #|     for (int i = 0; i < HID4_DEVICE_CHANGE_SIZE - 4 && hid4_devices[i] != 0 &&
+  lwz r31,-32768(r30)
+  #|   if (ret >= 0) {
+  blt GCA_L1820
+  #|       if (hid4_devices[i] == WUP_028_DESCRIPTOR_SIZE && hid4_devices[i + 4] == WUP_028_ID) {
+  lis r4,1406
+  #|     for (int i = 0; i < HID4_DEVICE_CHANGE_SIZE - 4 && hid4_devices[i] != 0 &&
+  lwz r7,140(r31)
+  #|       if (hid4_devices[i] == WUP_028_DESCRIPTOR_SIZE && hid4_devices[i + 4] == WUP_028_ID) {
+  ori r4,r4,823
+  #|     for (int i = 0; i < HID4_DEVICE_CHANGE_SIZE - 4 && hid4_devices[i] != 0 &&
+  li r10,0
+  #|          i += hid4_devices[i] / 4) {
+GCA_L16c0:
+  slwi r9,r10,2
+  add r9,r7,r9
+  #|     for (int i = 0; i < HID4_DEVICE_CHANGE_SIZE - 4 && hid4_devices[i] != 0 &&
+  lwz r8,128(r9)
+  addi r6,r8,-1
+  #|          i += hid4_devices[i] / 4) {
+  srwi r5,r8,2
+  #|     for (int i = 0; i < HID4_DEVICE_CHANGE_SIZE - 4 && hid4_devices[i] != 0 &&
+  cmplwi r6,1534
+  #|          i += hid4_devices[i] / 4) {
+  add r10,r5,r10
+  #|       if (hid4_devices[i] == WUP_028_DESCRIPTOR_SIZE && hid4_devices[i + 4] == WUP_028_ID) {
+  cmplwi cr7,r8,68
+  #|     for (int i = 0; i < HID4_DEVICE_CHANGE_SIZE - 4 && hid4_devices[i] != 0 &&
+  cmpwi cr5,r10,379
+  bgt GCA_L16f0
+  #|       if (hid4_devices[i] == WUP_028_DESCRIPTOR_SIZE && hid4_devices[i + 4] == WUP_028_ID) {
+  beq cr7,GCA_L17a8
+  #|     for (int i = 0; i < HID4_DEVICE_CHANGE_SIZE - 4 && hid4_devices[i] != 0 &&
+GCA_L16ec:
+  ble+ cr5,GCA_L16c0
+  #|     if (!found) { gcn_adapter_id = (u32)-1; adapter_live = 0; }
+GCA_L16f0:
+  lwz r29,-32752(r30)
+  li r10,-1
+  li r9,0
+  stw r10,4(r29)
+  stb r9,57(r31)
+  #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_GET_DEVICE_CHANGE, NULL, 0,
+GCA_L1704:
+  lis r9,-32735
+  lwz r3,0(r29)
+  ori r9,r9,11272
+  addi r7,r7,128
+  mtctr r9
+  li r10,0
+  lwz r9,-32704(r30)
+  li r8,1536
+  li r6,0
+  li r5,0
+  li r4,0
+  bctrl
+  #|   if (ret) onFatal(5, ret);
+  mr. r9,r3
+  beq GCA_L1788
+  #|   if (dev_usb_hid_fd >= 0) {
+  lwz r3,0(r29)
+  #|   DIAG_ERR(method, err);
+  li r6,5
+  lwz r10,-32764(r30)
+  #|   usb_failed = 1;
+  li r7,1
+  #|   if (dev_usb_hid_fd >= 0) {
+  cmpwi r3,0
+  #|   adapter_live = 0;
+  li r8,0
+  #|   DIAG_ERR(method, err);
+  stw r6,8(r10)
+  stw r9,12(r10)
+  #|   usb_failed = 1;
+  stb r7,56(r31)
+  #|   adapter_live = 0;
+  stb r8,57(r31)
+  #|   if (dev_usb_hid_fd >= 0) {
+  blt GCA_L1788
+  #|     IOS_CloseAsync(fd, callbackIgnore, NULL);
+GCA_L1768:
   lis r10,-32735
   #|     dev_usb_hid_fd = -1;
   li r9,-1
@@ -2359,158 +2344,112 @@ GCA_L16dc:
   li r5,0
   bctrl
   #| }
-GCA_L1724:
-  lwz r0,36(r1)
+GCA_L1788:
+  lwz r0,28(r1)
   li r3,0
-  lwz r28,16(r1)
-  lwz r29,20(r1)
+  lwz r29,12(r1)
+  lwz r30,16(r1)
   mtlr r0
-  lwz r30,24(r1)
-  addi r1,r1,32
+  lwz r31,20(r1)
+  addi r1,r1,24
   blr
-  #|   if ((fn[0] & 0xFFFF0000) != 0x806D0000 || fn[1] != 0x4E800020) return 0;
-GCA_L1744:
-  lwz r7,4(r9)
-  lis r8,20096
-  ori r8,r8,32
-  cmpw r7,r8
-  bne GCA_L16bc
-  stw r27,12(r1)
-  #|   __asm__ volatile("mr %0, 13" : "=r"(sda));
-  mr r27,r13
-  #|   u8 *lo = (u8 *)IPCGetBufferLo();
-  addi r9,r9,8
-  #|   u8 **hi_ptr = (u8 **)(sda + (s32)(short)(fn[0] & 0xFFFF));
-  extsh r29,r29
-  #|   u8 *lo = (u8 *)IPCGetBufferLo();
-  mtctr r9
-  #|   u8 *hi = *hi_ptr;
-  lwzx r28,r29,r27
-  #|   u8 *lo = (u8 *)IPCGetBufferLo();
-  bctrl
-  #|   if (((u32)hi & 0xF0000000) != 0x90000000) return 0;
-  word 0x578A0006                    # clrrwi r10,r28,28
-  lis r9,-28672
-  cmpw r10,r9
-  bne GCA_L1890
-  #|   if ((u32)hi < (u32)lo || (u32)hi - (u32)lo < need + 0x100) return 0;
-  cmplw r28,r3
-  blt GCA_L1890
-  subf r3,r3,r28
-  cmplwi r3,1151
-  ble GCA_L1890
-  #|   u8 *base = (u8 *)(((u32)hi - need) & ~0x1F);
-  addi r3,r28,-896
-  #|   hid5_devices = (struct hid5_device *)base;
-  lwz r28,-32768(r30)
-  #|   u8 *base = (u8 *)(((u32)hi - need) & ~0x1F);
-  word 0x54630034                    # clrrwi r3,r3,5
-  #|   while (n--) *b++ = 0;
-  li r8,224
-  #|   hid5_buffer = (u32 *)(base + sizeof(struct hid5_device) * HID5_DEVICE_CHANGE_SIZE);
-  addi r9,r3,384
-  #|   *hi_ptr = base;
-  stwx r3,r29,r27
-  #|   hid5_devices = (struct hid5_device *)base;
-  stw r3,376(r28)
-  #|   while (n--) *b++ = 0;
-  li r10,0
-  #|   hid5_buffer = (u32 *)(base + sizeof(struct hid5_device) * HID5_DEVICE_CHANGE_SIZE);
-  stw r9,136(r28)
-  #|   while (n--) *b++ = 0;
-  mtctr r8
-  #|   u8 *b = (u8 *)p;
-  mr r9,r3
-  #|   while (n--) *b++ = 0;
-GCA_L17c4:
-  stb r10,0(r9)
-  addi r9,r9,4
-  stb r10,-3(r9)
-  stb r10,-2(r9)
-  stb r10,-1(r9)
-  bdnz+ GCA_L17c4
-  #|   DCFlushRange(base, need);
-  lis r9,-32739
-  li r4,896
-  ori r9,r9,30440
-  mtctr r9
-  bctrl
-  #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID5_IOCTL_GET_VERSION, NULL, 0,
+  #|       if (hid4_devices[i] == WUP_028_DESCRIPTOR_SIZE && hid4_devices[i + 4] == WUP_028_ID) {
+GCA_L17a8:
+  lwz r8,144(r9)
+  cmpw r8,r4
+  bne+ GCA_L16ec
+  #|         if (gcn_adapter_id != device_id) {
   lwz r29,-32752(r30)
+  #|       u32 device_id = hid4_devices[i + 1];
+  lwz r9,132(r9)
+  #|         if (gcn_adapter_id != device_id) {
+  lwz r10,4(r29)
+  cmplw r10,r9
+  beq GCA_L1704
+  #|           DIAG_STAGE(6);
+  lwz r10,-32764(r30)
+  li r8,6
+  #|           gcn_adapter_id = device_id;
+  stw r9,4(r29)
+  #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_INTERRUPT_OUT,
   lis r9,-32735
-  lwz r7,136(r28)
+  #|           DIAG_STAGE(6);
+  stw r8,4(r10)
+  #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_INTERRUPT_OUT,
   ori r9,r9,11272
-  lwz r3,0(r29)
   mtctr r9
+  addi r5,r7,1664
+  #|   init_msg4.device = gcn_adapter_id;
+  lwz r6,4(r29)
+  #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_INTERRUPT_OUT,
   li r10,0
-  lwz r9,-32696(r30)
-  li r8,32
-  li r6,0
-  li r5,0
-  li r4,0
-  bctrl
-  lwz r27,12(r1)
-  lwz r31,28(r1)
-  b GCA_L187c
-  #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_GET_DEVICE_CHANGE, NULL, 0,
-GCA_L1830:
-  lis r10,-32735
-  #|     version = 4;
-  lwz r28,-32768(r30)
-  #|     DIAG_STAGE(4);
-  lwz r9,-32764(r30)
-  #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_GET_DEVICE_CHANGE, NULL, 0,
-  ori r10,r10,11272
-  lwz r29,-32752(r30)
-  #|     version = 4;
-  li r8,4
-  #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_GET_DEVICE_CHANGE, NULL, 0,
-  mtctr r10
-  #|     DIAG_STAGE(4);
-  li r10,4
-  stw r10,4(r9)
-  #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_GET_DEVICE_CHANGE, NULL, 0,
-  addi r7,r28,384
-  #|     version = 4;
-  stb r8,177(r28)
-  #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_GET_DEVICE_CHANGE, NULL, 0,
-  li r10,0
+  lwz r9,-32740(r30)
+  li r8,0
+  #|   init_msg4.device = gcn_adapter_id;
+  stw r6,1680(r7)
+  #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_INTERRUPT_OUT,
+  li r4,4
   lwz r3,0(r29)
-  li r8,1536
-  lwz r9,-32700(r30)
-  li r6,0
-  li r5,0
-  li r4,0
+  li r7,0
+  li r6,32
   bctrl
-  #|   if (ret) onFatal(3, ret);
-GCA_L187c:
+  #|           if (sendInit4(onDevUsbInit)) gcn_adapter_id = (u32)-1;
   cmpwi r3,0
-  beq GCA_L1724
-  lwz r9,-32764(r30)
+  bne GCA_L1854
+  #|                         hid4_devices, sizeof(hid4_devices), cb, NULL);
+  lwz r7,140(r31)
+  b GCA_L1704
+GCA_L1820:
+  lwz r29,-32752(r30)
   #|   DIAG_ERR(method, err);
-  mr r10,r3
-  b GCA_L16dc
-GCA_L1890:
-  lwz r27,12(r1)
-  b GCA_L16bc
+  li r6,5
+  lwz r10,-32764(r30)
+  #|   usb_failed = 1;
+  li r7,1
+  #|   if (dev_usb_hid_fd >= 0) {
+  lwz r3,0(r29)
+  #|   adapter_live = 0;
+  li r8,0
+  #|   DIAG_ERR(method, err);
+  stw r6,8(r10)
+  #|   if (dev_usb_hid_fd >= 0) {
+  cmpwi r3,0
+  #|   DIAG_ERR(method, err);
+  stw r9,12(r10)
+  #|   usb_failed = 1;
+  stb r7,56(r31)
+  #|   adapter_live = 0;
+  stb r8,57(r31)
+  #|   if (dev_usb_hid_fd >= 0) {
+  bge+ GCA_L1768
+  b GCA_L1788
+  #|           if (sendInit4(onDevUsbInit)) gcn_adapter_id = (u32)-1;
+GCA_L1854:
+  li r9,-1
+  #|                         hid4_devices, sizeof(hid4_devices), cb, NULL);
+  lwz r7,140(r31)
+  #|           if (sendInit4(onDevUsbInit)) gcn_adapter_id = (u32)-1;
+  stw r9,4(r29)
+  #|     if (!found) { gcn_adapter_id = (u32)-1; adapter_live = 0; }
+  b GCA_L1704
   #| static s32 onDevOpen(s32 fd, void *usr) {
 
 # ---- onDevOpen ---------------------------------------------------
 GCA_onDevOpen:
   stwu r1,-32(r1)
   mflr r0
-  word 0x429F0005                    # bcl 20,4*cr7+so,18a4 <onDevOpen+0xc>
+  word 0x429F0005                    # bcl 20,4*cr7+so,1870 <onDevOpen+0xc>
   #|   if (fd < 0) { onFatal(1, fd); return 0; }
-GCA_L18a4:
+GCA_L1870:
   mr. r9,r3
   #| static s32 onDevOpen(s32 fd, void *usr) {
   stw r30,24(r1)
   mflr r30
   addis r30,r30,1
   stw r0,36(r1)
-  addi r30,r30,-29116
+  addi r30,r30,-28992
   #|   if (fd < 0) { onFatal(1, fd); return 0; }
-  blt GCA_L19ac
+  blt GCA_L1978
   #|   dev_usb_hid_fd = fd;
   stw r28,16(r1)
   #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_GET_VERSION, NULL, 0, NULL, 0, cb, NULL);
@@ -2534,7 +2473,7 @@ GCA_L18a4:
   stw r9,0(r28)
   #|   return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_GET_VERSION, NULL, 0, NULL, 0, cb, NULL);
   li r7,0
-  lwz r9,-32692(r30)
+  lwz r9,-32696(r30)
   li r6,0
   #|   DIAG_STAGE(2);
   stw r27,4(r29)
@@ -2544,14 +2483,14 @@ GCA_L18a4:
   bctrl
   #|   if (ret) onFatal(2, ret);
   mr. r9,r3
-  bne GCA_L1940
-GCA_L1918:
+  bne GCA_L190c
+GCA_L18e4:
   lwz r27,12(r1)
   lwz r28,16(r1)
   lwz r29,20(r1)
   lwz r31,28(r1)
   #| }
-GCA_L1928:
+GCA_L18f4:
   lwz r0,36(r1)
   li r3,0
   lwz r30,24(r1)
@@ -2559,7 +2498,7 @@ GCA_L1928:
   mtlr r0
   blr
   #|   if (dev_usb_hid_fd >= 0) {
-GCA_L1940:
+GCA_L190c:
   lwz r3,0(r28)
   #|   usb_failed = 1;
   li r7,1
@@ -2576,7 +2515,7 @@ GCA_L1940:
   #|   adapter_live = 0;
   stb r8,57(r10)
   #|   if (dev_usb_hid_fd >= 0) {
-  blt GCA_L1918
+  blt GCA_L18e4
   #|     IOS_CloseAsync(fd, callbackIgnore, NULL);
   addi r9,r31,-1856
   lwz r4,-32748(r30)
@@ -2605,7 +2544,7 @@ GCA_L1940:
   addi r1,r1,32
   blr
   #|   if (dev_usb_hid_fd >= 0) {
-GCA_L19ac:
+GCA_L1978:
   lwz r6,-32752(r30)
   #|   DIAG_ERR(method, err);
   li r8,1
@@ -2626,7 +2565,7 @@ GCA_L19ac:
   #|   adapter_live = 0;
   stb r5,57(r10)
   #|   if (dev_usb_hid_fd >= 0) {
-  blt GCA_L1928
+  blt GCA_L18f4
   #|     IOS_CloseAsync(fd, callbackIgnore, NULL);
   lis r10,-32735
   #|     dev_usb_hid_fd = -1;
@@ -2657,76 +2596,160 @@ GCA_L19ac:
 GCA_gca_install:
   stwu r1,-192(r1)
   mflr r0
-  word 0x429F0005                    # bcl 20,4*cr7+so,1a20 <gca_install+0xc>
-GCA_L1a20:
+  word 0x429F0005                    # bcl 20,4*cr7+so,19ec <gca_install+0xc>
+GCA_L19ec:
   stw r30,184(r1)
   mflr r30
   addis r30,r30,1
   stw r25,164(r1)
-  addi r30,r30,-29496
+  addi r30,r30,-29372
   stw r0,196(r1)
   stw r24,160(r1)
   #|   static u8 installed = 0;
   #|   if (installed) return;
   lwz r25,-32768(r30)
-  lbz r24,1920(r25)
-  word 0x5709063E                    # clrlwi r9,r24,24
-  cmpwi r9,0
-  bne GCA_L1ba8
+  lbz r24,204(r25)
+  andi. r10,r24,255
+  beq GCA_L1a34
+  #|   }
+  #|   gca_diag[1] = patched ? 0x10 : 0xEE; /* 0xEE: PADRead call not found */
+  #|   if (!patched) return; /* adapter not in use: leave everything else stock */
+  #|   install_rumble();
+  #|   install_si_idle();
+  #| }
+  lwz r0,196(r1)
+  lwz r24,160(r1)
+  lwz r25,164(r1)
+  mtlr r0
+  lwz r30,184(r1)
+  addi r1,r1,192
+  blr
+  #|   ios = (struct ios_bufs *)(((u32)ios_raw + 31) & ~31); /* ios_raw starts zeroed */
+GCA_L1a34:
+  addi r9,r25,239
   stw r23,156(r1)
-  #|   installed = 1;
-  li r9,1
+  word 0x55290034                    # clrrwi r9,r9,5
+  stw r31,188(r1)
   #|   u32 target = (u32)gca_PADRead;
-  lwz r23,-32688(r30)
+  lwz r23,-32692(r30)
+  #|   init_msg_buffer[0] = WUP_028_CMD_INIT;
+  li r31,19
+  stw r19,140(r1)
+  #|   poll_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_IN, WUP_028_POLL_SIZE,
+  li r7,129
+  stw r20,144(r1)
+  #|   init_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_OUT, 1, init_msg_buffer };
+  li r8,-1
+  stw r21,148(r1)
+  #|   rumble_msg_buffer[0] = WUP_028_CMD_RUMBLE;
+  li r0,17
+  stw r22,152(r1)
+  #|   init_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_OUT, 1, init_msg_buffer };
+  li r11,1
   stw r26,168(r1)
-  #|     u32 dest = a + off;
-  #|     if (dest != ADDR_PADRead && dest != target) continue;
-  #|     s32 noff = (s32)(target - a);
-  #|     if (noff < -0x02000000 || noff >= 0x02000000) break;
-  #|     *ins = 0x48000001 | ((u32)noff & 0x03FFFFFC);
   #|     DCFlushRange(ins, 4);
   lis r26,-32739
-  stw r31,188(r1)
+  stw r27,172(r1)
+  #|   poll_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_IN, WUP_028_POLL_SIZE,
+  li r3,37
+  stw r28,176(r1)
+  #|                                        poll_msg_buffer };
+  addi r4,r9,32
+  stw r29,180(r1)
+  #|   rumble_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_OUT,
+  li r5,5
+  #|   init_msg_buffer[0] = WUP_028_CMD_INIT;
+  stb r31,0(r9)
   #|   for (u32 a = ADDR_updateLowGC; a < ADDR_updateLowGC + SIZE_updateLowGC; a += 4) {
   lis r31,-32766
-  stw r20,144(r1)
+  #|   init_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_OUT, 1, init_msg_buffer };
+  stw r10,1664(r9)
+  #|                                          1 + GCN_CONTROLLER_COUNT, rumble_msg_buffer };
+  addi r6,r9,96
+  #|   init_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_OUT, 1, init_msg_buffer };
+  stw r10,1668(r9)
+  #|   for (u32 a = ADDR_updateLowGC; a < ADDR_updateLowGC + SIZE_updateLowGC; a += 4) {
   ori r31,r31,38264
-  stw r27,172(r1)
+  #|   init_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_OUT, 1, init_msg_buffer };
+  stw r10,1672(r9)
   #|     DCFlushRange(ins, 4);
   ori r26,r26,30440
-  stw r29,180(r1)
+  #|   init_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_OUT, 1, init_msg_buffer };
+  stw r10,1676(r9)
+  addis r29,r23,32765
+  #|   poll_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_IN, WUP_028_POLL_SIZE,
+  stw r10,1696(r9)
   #|     if ((v & 0xFC000003) != 0x48000001) continue; /* bl only */
   lis r20,18432
-  addis r29,r23,32765
+  #|   poll_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_IN, WUP_028_POLL_SIZE,
+  stw r10,1700(r9)
   #|     if (dest != ADDR_PADRead && dest != target) continue;
   lis r27,-32735
-  stw r19,140(r1)
+  #|   poll_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_IN, WUP_028_POLL_SIZE,
+  stw r10,1704(r9)
   addi r29,r29,27272
-  stw r21,148(r1)
-  #|   for (u32 a = ADDR_updateLowGC; a < ADDR_updateLowGC + SIZE_updateLowGC; a += 4) {
-  addi r19,r31,472
-  stw r22,152(r1)
-  #|     ICInvalidateRange(ins, 4);
-  addi r21,r26,228
-  stw r28,176(r1)
+  stw r10,1708(r9)
   #|     if ((v & 0xFC000003) != 0x48000001) continue; /* bl only */
   ori r20,r20,1
-  #|   installed = 1;
-  stb r9,1920(r25)
+  #|   rumble_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_OUT,
+  stw r10,1728(r9)
+  #|   for (u32 a = ADDR_updateLowGC; a < ADDR_updateLowGC + SIZE_updateLowGC; a += 4) {
+  addi r19,r31,472
+  #|   rumble_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_OUT,
+  stw r10,1732(r9)
   #|     if (dest != ADDR_PADRead && dest != target) continue;
   ori r27,r27,24516
+  #|   rumble_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_OUT,
+  stw r10,1736(r9)
+  #|     ICInvalidateRange(ins, 4);
+  addi r21,r26,228
+  #|   rumble_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_OUT,
+  stw r10,1740(r9)
+  #|   init_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_OUT, 1, init_msg_buffer };
+  li r10,2
+  #|   poll_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_IN, WUP_028_POLL_SIZE,
+  stw r7,1716(r9)
+  #|   installed = 1;
+  li r7,1
+  #|   ios = (struct ios_bufs *)(((u32)ios_raw + 31) & ~31); /* ios_raw starts zeroed */
+  stw r9,140(r25)
   #|   int patched = 0;
   li r28,0
+  #|   init_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_OUT, 1, init_msg_buffer };
+  stw r9,1692(r9)
   #|     if (noff < -0x02000000 || noff >= 0x02000000) break;
   lis r22,1024
-  b GCA_L1b1c
+  #|   rumble_msg_buffer[0] = WUP_028_CMD_RUMBLE;
+  stb r0,96(r9)
+  #|   init_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_OUT, 1, init_msg_buffer };
+  stw r11,1688(r9)
+  #|   poll_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_IN, WUP_028_POLL_SIZE,
+  stw r3,1720(r9)
+  stw r4,1724(r9)
+  #|   rumble_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_OUT,
+  stw r5,1752(r9)
+  stw r6,1756(r9)
+  #|   init_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_OUT, 1, init_msg_buffer };
+  stw r8,1680(r9)
+  #|   poll_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_IN, WUP_028_POLL_SIZE,
+  stw r8,1712(r9)
+  #|   rumble_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_OUT,
+  stw r8,1744(r9)
+  #|   init_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_OUT, 1, init_msg_buffer };
+  stw r10,1684(r9)
+  #|   rumble_msg4 = (struct interrupt_msg4){ { 0 }, (u32)-1, WUP_028_ENDPOINT_OUT,
+  stw r10,1748(r9)
+  #|   installed = 1;
+  stb r7,204(r25)
+  #|   for (u32 a = ADDR_updateLowGC; a < ADDR_updateLowGC + SIZE_updateLowGC; a += 4) {
+  b GCA_L1b9c
   #|     u32 dest = a + off;
-GCA_L1ac0:
+GCA_L1b40:
   add r10,r9,r31
   #|     if (dest != ADDR_PADRead && dest != target) continue;
-GCA_L1ac4:
+GCA_L1b44:
   cmplw r23,r10
-  bne GCA_L1b0c
+  bne GCA_L1b8c
   #|     if (noff < -0x02000000 || noff >= 0x02000000) break;
   addis r10,r29,512
   #|     *ins = 0x48000001 | ((u32)noff & 0x03FFFFFC);
@@ -2743,9 +2766,9 @@ GCA_L1ac4:
   #|     DCFlushRange(ins, 4);
   mtctr r26
   #|     if (noff < -0x02000000 || noff >= 0x02000000) break;
-  bge GCA_L1b6c
+  bge GCA_L1bec
   #|     *ins = 0x48000001 | ((u32)noff & 0x03FFFFFC);
-GCA_L1af0:
+GCA_L1b70:
   stw r9,0(r31)
   #|     patched++;
   addi r28,r28,1
@@ -2757,13 +2780,13 @@ GCA_L1af0:
   mtctr r21
   bctrl
   #|   for (u32 a = ADDR_updateLowGC; a < ADDR_updateLowGC + SIZE_updateLowGC; a += 4) {
-GCA_L1b0c:
+GCA_L1b8c:
   addi r31,r31,4
   addi r29,r29,-4
   cmpw r31,r19
-  beq GCA_L1b6c
+  beq GCA_L1bec
   #|     u32 v = *ins;
-GCA_L1b1c:
+GCA_L1b9c:
   lwz r9,0(r31)
   #|     if ((v & 0xFC000003) != 0x48000001) continue; /* bl only */
   rlwinm r10,r9,0,30,5
@@ -2772,7 +2795,7 @@ GCA_L1b1c:
   #|     if ((v & 0xFC000003) != 0x48000001) continue; /* bl only */
   cmpw cr7,r10,r20
   rlwinm r9,r9,0,6,29
-  bne cr7,GCA_L1b0c
+  bne cr7,GCA_L1b8c
   #|     u32 dest = a + off;
   add r10,r9,r31
   #|     if (off & 0x02000000) off -= 0x04000000;
@@ -2780,9 +2803,9 @@ GCA_L1b1c:
   #|     if (dest != ADDR_PADRead && dest != target) continue;
   cmpw cr7,r10,r27
   #|     if (off & 0x02000000) off -= 0x04000000;
-  bne GCA_L1ac0
+  bne GCA_L1b40
   #|     if (dest != ADDR_PADRead && dest != target) continue;
-  bne cr7,GCA_L1ac4
+  bne cr7,GCA_L1b44
   #|     if (noff < -0x02000000 || noff >= 0x02000000) break;
   addis r10,r29,512
   #|     *ins = 0x48000001 | ((u32)noff & 0x03FFFFFC);
@@ -2799,40 +2822,12 @@ GCA_L1b1c:
   #|     DCFlushRange(ins, 4);
   mtctr r26
   #|     if (noff < -0x02000000 || noff >= 0x02000000) break;
-  blt+ GCA_L1af0
-  #|   }
+  blt+ GCA_L1b70
   #|   gca_diag[1] = patched ? 0x10 : 0xEE; /* 0xEE: PADRead call not found */
-GCA_L1b6c:
+GCA_L1bec:
   cmpwi r28,0
-  bne GCA_L1bc4
-  lwz r9,-32764(r30)
-  li r10,238
-  stw r10,4(r9)
-  #|   if (!patched) return; /* adapter not in use: leave everything else stock */
-GCA_L1b80:
-  lwz r19,140(r1)
-  lwz r20,144(r1)
-  lwz r21,148(r1)
-  lwz r22,152(r1)
-  lwz r23,156(r1)
-  lwz r26,168(r1)
-  lwz r27,172(r1)
-  lwz r28,176(r1)
-  lwz r29,180(r1)
-  lwz r31,188(r1)
-  #|   install_rumble();
-  #|   install_si_idle();
-  #| }
-GCA_L1ba8:
-  lwz r0,196(r1)
-  lwz r24,160(r1)
-  lwz r25,164(r1)
-  mtlr r0
-  lwz r30,184(r1)
-  addi r1,r1,192
-  blr
+  beq GCA_L1db4
   #|     if (f[0x64 / 4 + k] != sig[k]) return 0;
-GCA_L1bc4:
   lis r4,-32735
   lis r9,15456
   ori r4,r4,25352
@@ -2846,28 +2841,28 @@ GCA_L1bc4:
   #|   gca_diag[1] = patched ? 0x10 : 0xEE; /* 0xEE: PADRead call not found */
   stw r10,4(r29)
   #|     if (f[0x64 / 4 + k] != sig[k]) return 0;
-  bne GCA_L1cb0
+  bne GCA_L1ce0
   lwz r10,4(r4)
   lis r9,-30717
   ori r9,r9,12515
   cmpw r10,r9
-  bne GCA_L1cb0
+  bne GCA_L1ce0
   lwz r10,8(r4)
   lis r9,21504
   ori r9,r9,1717
   cmpw r10,r9
-  bne GCA_L1cb0
+  bne GCA_L1ce0
   lwz r10,12(r4)
   lis r9,16770
   ori r9,r9,8
   cmpw r10,r9
-  bne GCA_L1cb0
+  bne GCA_L1ce0
   #|   if (!motor_signature_ok()) { gca_diag[8] = 0xEE; return; }
   lwz r10,80(r4)
   lis r9,20096
   ori r9,r9,32
   cmpw r10,r9
-  bne GCA_L1cb0
+  bne GCA_L1ce0
   #|   for (u32 a = TEXT_START; a < TEXT_END; a += 4) {
   lis r9,16
   lis r10,-32768
@@ -2887,15 +2882,15 @@ GCA_L1bc4:
   li r31,0
   #|     sites[n++] = (u32 *)a;
   addi r3,r1,8
-  b GCA_L1c74
-GCA_L1c68:
+  b GCA_L1ca4
+GCA_L1c98:
   stwx r10,r3,r8
   #|   for (u32 a = TEXT_START; a < TEXT_END; a += 4) {
-GCA_L1c6c:
+GCA_L1c9c:
   addi r10,r10,4
-  bdz GCA_L1d84
+  bdz GCA_L1e04
   #|     if (!bl_target(a, *(u32 *)a, &dest) || dest != ADDR_PADControlMotor) continue;
-GCA_L1c74:
+GCA_L1ca4:
   lwz r9,0(r10)
   #|   if ((v & 0xFC000003) != 0x48000001) return 0;
   rlwinm r8,r9,0,30,5
@@ -2904,29 +2899,29 @@ GCA_L1c74:
   #|   if ((v & 0xFC000003) != 0x48000001) return 0;
   cmpw cr7,r8,r6
   rlwinm r9,r9,0,6,29
-  bne cr7,GCA_L1c6c
+  bne cr7,GCA_L1c9c
   #|     if (n == MAX_MOTOR_SITES) { gca_diag[8] = 0xEE; return; } /* implausible */
   cmpwi cr7,r31,32
   #|     sites[n++] = (u32 *)a;
   slwi r8,r31,2
   #|   if (off & 0x02000000) off -= 0x04000000;
-  beq GCA_L1c9c
+  beq GCA_L1ccc
   addis r9,r9,-1024
   #|   *dest = a + off;
-GCA_L1c9c:
+GCA_L1ccc:
   add r9,r10,r9
   #|     if (!bl_target(a, *(u32 *)a, &dest) || dest != ADDR_PADControlMotor) continue;
   cmpw r9,r4
-  bne GCA_L1c6c
+  bne GCA_L1c9c
   #|     sites[n++] = (u32 *)a;
   addi r31,r31,1
   #|     if (n == MAX_MOTOR_SITES) { gca_diag[8] = 0xEE; return; } /* implausible */
-  bne+ cr7,GCA_L1c68
-GCA_L1cb0:
+  bne+ cr7,GCA_L1c98
+GCA_L1ce0:
   li r9,238
   stw r9,32(r29)
   #|   if (f[3] != 0x4E800020) return 0; /* blr */
-GCA_L1cb8:
+GCA_L1ce8:
   lis r10,-32738
   lis r9,20096
   ori r31,r10,41096
@@ -2936,28 +2931,28 @@ GCA_L1cb8:
   li r28,238
   #|   if (f[3] != 0x4E800020) return 0; /* blr */
   cmpw r27,r9
-  bne GCA_L1d78
+  bne GCA_L1da8
   mr r3,r31
   bl GCA_leaf_store_only_part_0
   #|   int ok = leaf_store_only(si) && leaf_store_only(rf);
   cmpwi r3,0
-  beq GCA_L1d78
+  beq GCA_L1da8
   #|   if (f[3] != 0x4E800020) return 0; /* blr */
   lwz r9,-4(r31)
   addi r3,r31,-16
   cmpw r9,r27
-  bne GCA_L1d78
+  bne GCA_L1da8
   bl GCA_leaf_store_only_part_0
   #|   for (int k = 0; ok && k < 3; k++) {
   cmpwi r3,0
-  beq GCA_L1d78
+  beq GCA_L1da8
   li r5,0
   addi r0,r31,12
   li r4,0
   li r11,261
   lis r3,1
   #|     if ((si[k] ^ rf[k]) & 0xFFFF0000) ok = 0; /* same opcode and registers */
-GCA_L1d18:
+GCA_L1d48:
   lwz r8,0(r31)
   #|   for (int k = 0; ok && k < 3; k++) {
   addi r31,r31,4
@@ -2980,32 +2975,60 @@ GCA_L1d18:
   #|     if (si[k] != rf[k]) differs = 1;
   or r5,r5,r8
   #|     if (op == 36 || op == 38 || op == 44) stores++;
-  bgt cr7,GCA_L1d58
+  bgt cr7,GCA_L1d88
   add r4,r4,r9
   #|   for (int k = 0; ok && k < 3; k++) {
-GCA_L1d58:
-  bge GCA_L1e14
-  bne+ cr5,GCA_L1d18
+GCA_L1d88:
+  bge GCA_L1e94
+  bne+ cr5,GCA_L1d48
   #|   si_idle_ok = ok && differs && stores;
   cmpwi r5,0
-  beq GCA_L1e14
+  beq GCA_L1e94
   cmpwi r4,0
-  beq GCA_L1e14
+  beq GCA_L1e94
   li r24,1
   #|   gca_diag[9] = si_idle_ok ? 1 : 0xEE;
   li r28,1
-GCA_L1d78:
+GCA_L1da8:
   stb r24,116(r25)
   stw r28,36(r29)
-  b GCA_L1b80
+  b GCA_L1dc0
+  #|   gca_diag[1] = patched ? 0x10 : 0xEE; /* 0xEE: PADRead call not found */
+GCA_L1db4:
+  lwz r9,-32764(r30)
+  li r10,238
+  stw r10,4(r9)
+  #| }
+GCA_L1dc0:
+  lwz r0,196(r1)
+  #|   if (!patched) return; /* adapter not in use: leave everything else stock */
+  lwz r19,140(r1)
+  lwz r20,144(r1)
+  #| }
+  mtlr r0
+  #|   if (!patched) return; /* adapter not in use: leave everything else stock */
+  lwz r21,148(r1)
+  lwz r22,152(r1)
+  lwz r23,156(r1)
+  lwz r26,168(r1)
+  lwz r27,172(r1)
+  lwz r28,176(r1)
+  lwz r29,180(r1)
+  lwz r31,188(r1)
+  #| }
+  lwz r24,160(r1)
+  lwz r25,164(r1)
+  lwz r30,184(r1)
+  addi r1,r1,192
+  blr
   #|   for (int k = 0; k < n; k++) patched += patch_bl(sites[k], target);
-GCA_L1d84:
+GCA_L1e04:
   cmpwi r31,0
-  beq GCA_L1e08
+  beq GCA_L1e88
   #|   DCFlushRange(ins, 4);
   lis r23,-32739
   #|   u32 target = (u32)gca_PADControlMotor;
-  lwz r21,-32684(r30)
+  lwz r21,-32688(r30)
   #|   DCFlushRange(ins, 4);
   ori r23,r23,30440
   addi r27,r1,4
@@ -3016,7 +3039,7 @@ GCA_L1d84:
   #|   if (noff < -0x02000000 || noff >= 0x02000000) return 0;
   lis r22,1024
   #|   for (int k = 0; k < n; k++) patched += patch_bl(sites[k], target);
-GCA_L1da8:
+GCA_L1e28:
   lwzu r28,4(r27)
   #|   DCFlushRange(ins, 4);
   li r4,4
@@ -3034,7 +3057,7 @@ GCA_L1da8:
   oris r9,r9,18432
   ori r9,r9,1
   #|   if (noff < -0x02000000 || noff >= 0x02000000) return 0;
-  bge GCA_L1df0
+  bge GCA_L1e70
   #|   *ins = 0x48000001 | ((u32)noff & 0x03FFFFFC);
   stw r9,0(r28)
   #|   for (int k = 0; k < n; k++) patched += patch_bl(sites[k], target);
@@ -3047,26 +3070,26 @@ GCA_L1da8:
   mtctr r20
   bctrl
   #|   for (int k = 0; k < n; k++) patched += patch_bl(sites[k], target);
-GCA_L1df0:
+GCA_L1e70:
   addic. r31,r31,-1
-  bne+ GCA_L1da8
+  bne+ GCA_L1e28
   #|   gca_diag[8] = patched ? (u32)patched : 0xEE;
   cmpwi r26,0
-  beq GCA_L1e08
+  beq GCA_L1e88
   stw r26,32(r29)
-  b GCA_L1cb8
+  b GCA_L1ce8
   #|   int patched = 0;
-GCA_L1e08:
+GCA_L1e88:
   li r26,238
   #|   gca_diag[8] = patched ? (u32)patched : 0xEE;
   stw r26,32(r29)
-  b GCA_L1cb8
+  b GCA_L1ce8
   #|   gca_diag[9] = si_idle_ok ? 1 : 0xEE;
-GCA_L1e14:
+GCA_L1e94:
   li r28,238
   stb r24,116(r25)
   stw r28,36(r29)
-  b GCA_L1b80
+  b GCA_L1dc0
 
 # ---- read-only data, variables and buffers (zero = bss) ----------
   word 0x2F646576                    # '/dev'
@@ -3078,41 +3101,10 @@ GCA_L1e14:
   word 0x00000000
 GCA_gca_reloc_base:
   word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
 GCA_dev_usb_hid_fd:
   word 0xFFFFFFFF
 GCA_gcn_adapter_id:
   word 0xFFFFFFFF
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-GCA_init_msg_buffer:
-  word 0x13000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-GCA_rumble_msg_buffer:
-  word 0x11000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
 GCA_gca_diag:
   word 0x47434131
   word 0x00000000
@@ -3126,37 +3118,6 @@ GCA_gca_diag:
   word 0x00000000
   word 0x00000000
   word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-GCA_rumble_msg4:
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0xFFFFFFFF
-  word 0x00000002
-  word 0x00000005
-  word 0x00001EA0
-GCA_poll_msg4:
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0xFFFFFFFF
-  word 0x00000081
-  word 0x00000025
-  word 0x00002060
-GCA_init_msg4:
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0xFFFFFFFF
-  word 0x00000002
-  word 0x00000001
-  word 0x00001E80
 GCA_started:
   word 0x00000000
   word 0x00000000
@@ -3203,57 +3164,9 @@ GCA_rumble_pending:
   word 0x00000000
 GCA_hid5_buffer:
   word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-GCA_hid5_argv:
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
+GCA_ios:
   word 0x00000000
 GCA_rumble_stall:
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-GCA_hid5_rumble_argv:
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-GCA_hid5_poll_argv:
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-GCA_poll_msg_buffer:
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-GCA_poll_errors:
   word 0x00000000
 GCA_origin_valid:
   word 0x00000000
@@ -3274,419 +3187,502 @@ GCA_recal_start:
   word 0x00000000
 GCA_hid5_devices:
   word 0x00000000
-  word 0x00000000
-GCA_hid4_devices:
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
-  word 0x00000000
 GCA_installed_1:
-  word 0x00474341
-  word 0x45000000
-  word 0x00001F60                    # address of started
-  word 0x00001EC0                    # address of gca_diag
-  word 0x00001898                    # address of onDevOpen
-  word 0x00001E24                    # address of +0x1e24
-  word 0x00001E60                    # address of dev_usb_hid_fd
+  word 0x00000000
+GCA_ios_raw:
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000000
+  word 0x00000047
+  word 0x43414500
+  word 0x00001EFC                    # address of started
+  word 0x00001ECC                    # address of gca_diag
+  word 0x00001864                    # address of onDevOpen
+  word 0x00001EA4                    # address of +0x1ea4
+  word 0x00001EC4                    # address of dev_usb_hid_fd
   word 0x000000CC                    # address of callbackIgnore
-  word 0x00001F62                    # address of gcn_data
-  word 0x00000B40                    # address of onDevUsbInit
+  word 0x00001EFE                    # address of gcn_data
+  word 0x00000B48                    # address of onDevUsbInit
   word 0x00000664                    # address of onDevUsbParams5
   word 0x00000584                    # address of onRumble
-  word 0x00001F00                    # address of rumble_msg4
-  word 0x00000BF8                    # address of onDevUsbPoll
-  word 0x00001FE0                    # address of rumble_acked
-  word 0x00001FE4                    # address of rumble_pending
-  word 0x0000116C                    # address of onDevUsbAttach5
+  word 0x00000C00                    # address of onDevUsbPoll
+  word 0x00001F7C                    # address of rumble_acked
+  word 0x00001F80                    # address of rumble_pending
+  word 0x00001140                    # address of onDevUsbAttach5
   word 0x0000076C                    # address of onDevUsbResume5
-  word 0x0000109C                    # address of onDevUsbChange5
-  word 0x00001470                    # address of onDevUsbChange4
-  word 0x00001340                    # address of onDevGetVersion5
-  word 0x00001664                    # address of onDevGetVersion4
+  word 0x00001070                    # address of onDevUsbChange5
+  word 0x0000167C                    # address of onDevUsbChange4
+  word 0x00001314                    # address of onDevGetVersion5
+  word 0x00001444                    # address of onDevGetVersion4
   word 0x000000D4                    # address of gca_PADRead
   word 0x00000510                    # address of gca_PADControlMotor
-  word 0x00001F1C                    # fixup: this word holds an address
-  word 0x00001F3C                    # fixup: this word holds an address
-  word 0x00001F5C                    # fixup: this word holds an address
   word 0x00000000
 }

@@ -20,6 +20,7 @@ driver calls, simulates an IPC/USB stack with a WUP-028 adapter attached
      their recorded timing against a 59.94 Hz game: every press is seen,
      no phantom holds, sticks rest at 0 after calibration.
 """
+import os
 import random
 import struct
 import sys
@@ -29,8 +30,9 @@ from unicorn import Uc, UC_ARCH_PPC, UC_MODE_PPC32, UC_MODE_BIG_ENDIAN, UC_HOOK_
 from unicorn import ppc_const as P
 
 ROOT = Path(__file__).resolve().parent.parent
-GCT = (ROOT / "dist" / "BOOST.GCT").read_bytes()
-REPORT = dict(l.split(": ", 1) for l in (ROOT / "dist" / "build-report.txt").read_text().splitlines())
+DIST = Path(os.environ.get("GCA_DIST", ROOT / "dist"))  # tests/check_asm.py points this elsewhere
+GCT = (DIST / "BOOST.GCT").read_bytes()
+REPORT = dict(l.split(": ", 1) for l in (DIST / "build-report.txt").read_text().splitlines())
 BLOB = int(REPORT["blob_addr"], 16)
 GCA_PADREAD = int(REPORT["gca_PADRead"], 16)
 GCA_MOTOR = int(REPORT["gca_PADControlMotor"], 16)

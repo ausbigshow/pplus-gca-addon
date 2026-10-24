@@ -32,6 +32,26 @@ Requires the stock Project+ **3.2.1** Wii `BOOST.GCT`
 (md5 `a8b8be65aa8c63625235476df542d2e3`). If another add-on also replaces
 `BOOST.GCT`, they can't both be on.
 
+## Building it into Project+ (GCTRM source)
+
+`build.py` also writes `dist/USBGameCubeAdapter.asm`, the same driver as one
+commented GCTRealMate `PULSE` code, to put straight into the Project+
+codeset:
+
+1. Copy it to `Source/Extras/USBGameCubeAdapter.asm`.
+2. Add `.include Source/Extras/USBGameCubeAdapter.asm` on its own line in
+   `BOOST.txt`. The stock file has no newline at the end, so check the line
+   above stays separate.
+3. Compile `BOOST.txt` as usual. Checked with GCTRealMate v0.2.6: stock
+   `BOOST.txt` plus this line builds, with 18144 bytes left before the
+   codelist at `0x80566528`.
+
+This build is position-independent: on its first run it adds its own address
+to the addresses in its address table (entry.S), so it works wherever GCTRM
+places it. The C source lines are comments next to the instructions. Mnemonics
+GCTRM can't encode are written as `word` with the instruction in a comment.
+Don't also turn on the launcher add-on.
+
 ## Using it
 
 - Controllers on the adapter show up as GameCube controllers in ports 1-4.
@@ -162,7 +182,12 @@ pip install unicorn py7zr pyusb
 python3 build.py path/to/stock/BOOST.GCT
 python3 tests/emulate.py
 node tests/test_patcher.mjs path/to/stock/BOOST.GCT /tmp/out.7z
+python3 tests/check_asm.py path/to/GCTRealMate path/to/stock/BOOST.GCT
 ```
+
+`check_asm.py` assembles `dist/USBGameCubeAdapter.asm` with GCTRealMate,
+checks the bytes match the compiled PIC build, then runs the emulator tests
+on it.
 
 `build.py` writes `dist/USBGameCubeAdapter.7z` (contains the patched
 `BOOST.GCT`, for your own testing only) and the patcher page (contains only

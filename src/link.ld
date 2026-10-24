@@ -8,15 +8,20 @@ SECTIONS
   .text BASE : {
     KEEP(*(.text.entry))
     *(.text .text.*)
+    __rodata_start = .;    /* where the .asm stops writing instructions */
     *(.rodata .rodata.*)
   }
   .data ALIGN(32) : {
+    __data_start = .;
     *(.data .data.*)
     *(.sdata .sdata.*)
     *(.sbss .sbss.*)
     *(.bss .bss.*)
     *(COMMON)
     LONG(0x47434145) /* 'GCAE' end marker, keeps .data PROGBITS to the end */
+    . = ALIGN(8);
+    __got2_start = .; *(.got2) __got2_end = .;    /* PIC build only */
+    __fixup_start = .; *(.fixup) __fixup_end = .;
     . = ALIGN(8);
   }
   /DISCARD/ : { *(.comment) *(.note*) *(.eh_frame*) *(.gnu*) *(.got*) *(.plt*) }

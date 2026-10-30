@@ -39,18 +39,29 @@ commented GCTRealMate `PULSE` code, to put straight into the Project+
 codeset:
 
 1. Copy it to `Source/Extras/USBGameCubeAdapter.asm`.
-2. Add `.include Source/Extras/USBGameCubeAdapter.asm` on its own line in
-   `BOOST.txt`. The stock file has no newline at the end, so check the line
-   above stays separate.
-3. Compile `BOOST.txt` as usual. Checked with GCTRealMate v0.2.6: stock
-   `BOOST.txt` plus this line builds, with 18088 bytes left before the
-   codelist at `0x80566528`.
+2. Add `.include Source/Extras/USBGameCubeAdapter.asm` as the **last** line
+   of the stock `BOOST.txt`. The stock file has no newline at the end, so
+   check the line above stays separate.
+3. Compile `BOOST.txt` as usual (`-a:1 -b:0x80550010`, from
+   `GCTRealMate.ini`).
 
-This build is position-independent: on its first run it adds its own address
-to the addresses in its address table (entry.S), and it aligns its IOS
-buffers at run time, so it works wherever GCTRM places it. It has not been
-tested on a console yet. The C source lines are comments next to the instructions. Mnemonics
-GCTRM can't encode are written as `word` with the instruction in a comment.
+The result is byte-for-byte the `BOOST.GCT` the web patcher makes (checked
+with GCTRealMate v0.2.6), so it's the same console-tested code. The code is
+linked for one address, `0x8055f6e8` (the end of the stock `BOOST.GCT`), so
+it only works there: change nothing else in `BOOST.txt` and add no codes
+after it.
+
+If other codes have to come after it, use
+`dist/USBGameCubeAdapter-Movable.asm` instead (include it anywhere in
+`BOOST.txt`, never both files). It's position-independent: on its first run
+it adds its own address to the addresses in its address table (entry.S),
+and it aligns its IOS buffers at run time, so it works wherever GCTRM places
+it. Its bytes differ from the patcher's, and it has not been tested on a
+console yet.
+
+In both files the C source lines are comments next to the instructions.
+Mnemonics GCTRM can't encode are written as `word` with the instruction in
+a comment.
 Don't also turn on the launcher add-on.
 
 ## Using it
@@ -186,9 +197,10 @@ node tests/test_patcher.mjs path/to/stock/BOOST.GCT /tmp/out.7z
 python3 tests/check_asm.py path/to/GCTRealMate path/to/stock/BOOST.GCT
 ```
 
-`check_asm.py` assembles `dist/USBGameCubeAdapter.asm` with GCTRealMate,
-checks the bytes match the compiled PIC build, then runs the emulator tests
-on it at every 8-byte offset from a 32-byte boundary. `build.py` runs it
+`check_asm.py` assembles both `.asm` files with GCTRealMate and checks the
+bytes match their builds (the fixed one is the code `build.py` appends to
+`BOOST.GCT`), then runs the emulator tests on the movable one at every
+8-byte offset from a 32-byte boundary. `build.py` runs it
 itself when `GCTRM` is set to a GCTRealMate binary, and warns otherwise.
 
 `build.py` writes `dist/USBGameCubeAdapter.7z` (contains the patched

@@ -34,34 +34,29 @@ Requires the stock Project+ **3.2.1** Wii `BOOST.GCT`
 
 ## Building it into Project+ (GCTRM source)
 
-`build.py` also writes `dist/USBGameCubeAdapter.asm`, the same driver as one
-commented GCTRealMate `PULSE` code, to put straight into the Project+
-codeset:
+`build.py` also writes two GCTRealMate `PULSE` builds of the same driver,
+to put straight into the Project+ codeset (or any Brawl NTSC-U codeset):
 
-1. Copy it to `Source/Extras/USBGameCubeAdapter.asm`.
-2. Add `.include Source/Extras/USBGameCubeAdapter.asm` as the **last** line
-   of the stock `BOOST.txt`. The stock file has no newline at the end, so
-   check the line above stays separate.
-3. Compile `BOOST.txt` as usual (`-a:1 -b:0x80550010`, from
-   `GCTRealMate.ini`).
+- `dist/USBGameCubeAdapter.asm`, fixed-address. Copy it to
+  `Source/Extras/` and add `.include Source/Extras/USBGameCubeAdapter.asm`
+  as the **last** line of the stock `BOOST.txt` (it has no newline at the
+  end, so check the line above stays separate). The result is byte-for-byte
+  the `BOOST.GCT` the web patcher makes (checked with GCTRealMate v0.2.6),
+  so it's the same console-tested code. It's linked for `0x8055f6e8` (the
+  end of the stock `BOOST.GCT`) and only works there: change nothing else
+  in `BOOST.txt` and add no codes after it.
+- `dist/USBGameCubeAdapter-Movable.asm`, position-independent: include it
+  anywhere, with any other codes. On its first run it adds its own address
+  to the addresses in its address table (entry.S), and it aligns its IOS
+  buffers at run time, so it works wherever GCTRM places it. Its bytes
+  differ from the patcher's, and it has not been tested on a console yet.
 
-The result is byte-for-byte the `BOOST.GCT` the web patcher makes (checked
-with GCTRealMate v0.2.6), so it's the same console-tested code. The code is
-linked for one address, `0x8055f6e8` (the end of the stock `BOOST.GCT`), so
-it only works there: change nothing else in `BOOST.txt` and add no codes
-after it.
-
-If other codes have to come after it, use
-`dist/USBGameCubeAdapter-Movable.asm` instead (include it anywhere in
-`BOOST.txt`, never both files). It's position-independent: on its first run
-it adds its own address to the addresses in its address table (entry.S),
-and it aligns its IOS buffers at run time, so it works wherever GCTRM places
-it. Its bytes differ from the patcher's, and it has not been tested on a
-console yet.
-
-In both files the C source lines are comments next to the instructions.
-Mnemonics GCTRM can't encode are written as `word` with the instruction in
-a comment.
+Use one or the other, never both, and compile `BOOST.txt` as usual
+(`-a:1 -b:0x80550010`, from `GCTRealMate.ini`). Each file explains itself
+(how it works, status words, Brawl addresses, credits and licences in its
+header; the C source as comments next to the instructions), since it
+travels without this repo. Mnemonics GCTRM can't encode are written as
+`word` with the instruction in a comment.
 Don't also turn on the launcher add-on.
 
 ## Using it

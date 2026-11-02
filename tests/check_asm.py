@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Check both GCTRM .asm files in dist/ with the real GCTRealMate.
 
-1. Assembles each the way the Project+ codeset does (.include from a codeset
-   .txt) and checks the PULSE body is byte-for-byte its build, so GCTRM
-   encoded every instruction as intended: USBGameCubeAdapter.asm against
-   build/gca.bin (the code build.py appends to BOOST.GCT, so as the last
-   line of the stock BOOST.txt it builds the same BOOST.GCT) and
-   USBGameCubeAdapter-Movable.asm against the PIC build (build/pic/gca.bin).
+1. Assembles each the way a codeset does (.include from a codeset .txt) and
+   checks the PULSE body is byte-for-byte its build, so GCTRM encoded every
+   instruction as intended: USBGameCubeAdapter.asm against build/gca.bin
+   (the code build.py appends to BOOST.GCT, so as the last line of the stock
+   BOOST.txt it builds the same BOOST.GCT) and USBGameCubeAdapter-Movable.asm
+   against the PIC build (build/pic/gca.bin).
 2. Appends the GCTRM-built movable C0 code to the stock BOOST.GCT at four
    addresses (every 8-byte offset from a 32-byte boundary) and runs
    tests/emulate.py on each, so self-relocation and buffer alignment are

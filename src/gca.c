@@ -1,12 +1,12 @@
 /*
- * Project+ USB GameCube Adapter (WUP-028) support for vWii / Wii
- * Target: Super Smash Bros. Brawl NTSC-U (RSBE01), as used by Project+ v3.2.x
+ * USB GameCube Adapter (WUP-028, "Wii U" adapter) support for Brawl on vWii / Wii
+ * Target: Super Smash Bros. Brawl NTSC-U (RSBE01) and mods built on it
  *
  * Adapted from "WUP-028 adapter BrainSlug module" by Alex "Chadderz" Chadwick
  * https://github.com/Chadderz121/wup-028-bslug  (BSD/MIT-style licence below)
  *
  * Changes from the original:
- *  - Freestanding build that lives inside BOOST.GCT; calls Brawl's own SDK
+ *  - Freestanding build that runs as one Gecko C0 code; calls Brawl's own SDK
  *    functions at fixed NTSC-U addresses (verified against doldecomp/brawl).
  *  - Installs itself by redirecting the single `bl PADRead` inside
  *    gfPadSystem::updateLowGC, and falls back to the real PADRead whenever no
@@ -34,6 +34,29 @@
  *  The above copyright notice and this permission notice shall be included in
  *  all copies or substantial portions of the Software.
  *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+ *
+ * How it works, in order:
+ *  1. The Gecko codehandler runs the C0 code (entry.S) every frame. It calls
+ *     gca_install, which on its first run rewrites the `bl PADRead` in
+ *     gfPadSystem::updateLowGC into `bl gca_PADRead` (and, if their code
+ *     looks as expected, every `bl PADControlMotor` into
+ *     `bl gca_PADControlMotor`). After that the C0 code does nothing.
+ *  2. The first time the game reads the pads, gca_PADRead opens IOS's
+ *     /dev/usb/hid. Everything after that is asynchronous: each IOS request
+ *     names a callback, IOS calls it when the request completes, and each
+ *     callback sends the next request (the "callback chain" below).
+ *  3. The chain asks which HID interface IOS has (v4 on older IOS, v5 on the
+ *     vWii's IOS58), waits for the adapter (USB id 057e:0337) to appear,
+ *     sends it the 0x13 "start reporting" command, then keeps one 37-byte
+ *     interrupt read (a "poll") outstanding forever.
+ *  4. Each poll reply (onDevUsbPoll) is decoded into PADStatus records for the
+ *     four ports in gcn_data, and the next poll is sent at once, so this runs
+ *     at the adapter's own rate (~125 Hz), independent of the game.
+ *  5. gca_PADRead copies gcn_data to the game when the adapter delivered data
+ *     in the last 1.5 s; otherwise it calls the real PADRead, so normal
+ *     controllers keep working when no adapter is in use.
+ *  Nothing here blocks or waits: if any step fails, the driver records why in
+ *  gca_diag and the game keeps using the real PADRead.
  */
 
 typedef unsigned char u8;
@@ -48,6 +71,11 @@ typedef signed int s32;
 /*============================================================================*/
 /* Brawl NTSC-U (RSBE01) addresses                                            */
 /*============================================================================*/
+/* These are the only places the driver touches the game. They are fixed
+ * addresses inside Brawl's main.dol, so they are the same in every Brawl mod
+ * that runs on the NTSC-U disc; a PAL or JP disc would need new values. The
+ * functions it calls are the Wii SDK's own (IOS IPC, cache, PAD, VI). Before
+ * patching anything it checks the code it is about to change. */
 
 /* Wii SDK IPC client (ipcclt.c), in source order. */
 #define ADDR_IOS_OpenAsync    0x80212290
@@ -75,13 +103,18 @@ typedef signed int s32;
 #define ADDR_updateLowGC      0x80029578
 #define SIZE_updateLowGC      0x1D8
 
+/* One buffer of an IOS ioctlv request: address and length. */
 typedef struct {
   void *data;
   u32 len;
 } ioctlv;
 
+/* IOS async callback: ret is the request's result (negative = error), usr is
+ * the pointer given with the request. It runs in interrupt context, so it
+ * must be short and must not wait. */
 typedef s32 (*ios_cb_t)(s32 ret, void *usr);
 
+/* The SDK's per-port pad record, 12 bytes, as PADRead fills it. */
 typedef struct {
   u16 button;
   s8 stickX, stickY, substickX, substickY;
@@ -110,6 +143,7 @@ typedef struct {
 #define PAD_BUTTON_Y     0x0800
 #define PAD_BUTTON_START 0x1000
 
+/* The SDK functions above, called through their addresses. */
 #define IOS_OpenAsync   ((s32 (*)(const char *, u32, ios_cb_t, void *))ADDR_IOS_OpenAsync)
 #define IOS_CloseAsync  ((s32 (*)(s32, ios_cb_t, void *))ADDR_IOS_CloseAsync)
 #define IOS_IoctlAsync  ((s32 (*)(s32, s32, void *, s32, void *, s32, ios_cb_t, void *))ADDR_IOS_IoctlAsync)
@@ -128,12 +162,15 @@ typedef struct {
 #define GCN_CONTROLLER_COUNT 4
 /* Time base runs at bus clock / 4 = 60.75 MHz on Wii. */
 #define TB_PER_MS (243000 / 4)
-#define GCN_TIMEOUT (1500 * TB_PER_MS)
-#define RECAL_HOLD (3000 * TB_PER_MS)
+#define GCN_TIMEOUT (1500 * TB_PER_MS) /* no report for 1.5 s: fall back to PADRead */
+#define RECAL_HOLD (3000 * TB_PER_MS)  /* hold X+Y+Start this long to recalibrate */
 
+/* The adapter's USB protocol: one OUT byte 0x13 starts input reports; OUT
+ * 0x11 followed by one byte per port sets the rumble motors. Each IN report
+ * is 37 bytes: 0x21, then 9 bytes per port (see onDevUsbPoll). */
 #define WUP_028_CMD_INIT 0x13
 #define WUP_028_CMD_RUMBLE 0x11
-#define WUP_028_ID 0x057e0337
+#define WUP_028_ID 0x057e0337 /* USB vendor 057e (Nintendo), product 0337 */
 #define WUP_028_POLL_SIZE 0x25
 #define DEV_USB_HID_PATH "/dev/usb/hid"
 
@@ -141,19 +178,21 @@ typedef struct {
 /* State                                                                      */
 /*============================================================================*/
 
-static s32 dev_usb_hid_fd = -1;
-static s8 started = 0;
-static s8 version = 0;
-static volatile s8 usb_failed = 0;
-static PADStatus gcn_data[GCN_CONTROLLER_COUNT];
-static volatile u32 gcn_data_written;
-static volatile u32 gcn_adapter_id = (u32)-1;
-static volatile u8 adapter_live = 0;
+static s32 dev_usb_hid_fd = -1;            /* IOS handle for /dev/usb/hid */
+static s8 started = 0;                     /* gca_PADRead has opened the device */
+static s8 version = 0;                     /* HID interface in use: 4, 5, or 0 = not yet */
+static volatile s8 usb_failed = 0;         /* gave up (see gca_diag[2..3]) */
+static PADStatus gcn_data[GCN_CONTROLLER_COUNT]; /* latest decoded report, per port */
+static volatile u32 gcn_data_written;      /* time base when gcn_data was last filled */
+static volatile u32 gcn_adapter_id = (u32)-1; /* IOS device id of the adapter; -1 = none */
+static volatile u8 adapter_live = 0;       /* reports are arriving */
 /* A real unplug also shows up as poll errors, so retry only a few times. */
 #define POLL_RETRIES 3
 static u8 poll_errors;
 
-/* Origin calibration, per port. */
+/* Origin calibration, per port: like a real GameCube, the stick and trigger
+ * positions when the controller is first seen count as "centre"/"released",
+ * and every later reading is reported relative to them. */
 static u8 origin_valid[GCN_CONTROLLER_COUNT];
 static u8 origin[GCN_CONTROLLER_COUNT][6]; /* sx, sy, cx, cy, l, r */
 static u32 recal_start[GCN_CONTROLLER_COUNT];
@@ -177,30 +216,39 @@ static u16 press_latch[GCN_CONTROLLER_COUNT];
  *  [9] SI idle reset: 1 = verified and in use, 0xEE = shape mismatch, off
  *  [10] PADControlMotor calls from the game
  *  [11] rumble message errors */
+/* Stage values in [1]: 1 opening, 2 opened, 4 HID v4, 5 HID v5, 6 adapter
+ * found, 7 polling, 0x10 installed, 0xEE PADRead call not found. Error site in
+ * [2]: the number passed to onFatal / DIAG_ERR below. */
 volatile u32 gca_diag[12] = { 0x47434131 /* 'GCA1' */ };
 #define DIAG_STAGE(x) (gca_diag[1] = (x))
 #define DIAG_ERR(m, e) (gca_diag[2] = (m), gca_diag[3] = (u32)(e))
 
+/* Buffers IOS reads or writes must be 32-byte aligned (IOS_ALIGN), because
+ * the cache is flushed/invalidated in 32-byte lines around them. */
 #ifndef GCA_PIC
-static u8 init_msg_buffer[32] IOS_ALIGN = { WUP_028_CMD_INIT };
-static u8 poll_msg_buffer[64] IOS_ALIGN;
+static u8 init_msg_buffer[32] IOS_ALIGN = { WUP_028_CMD_INIT }; /* OUT: start reports */
+static u8 poll_msg_buffer[64] IOS_ALIGN;                         /* IN: one 37-byte report */
 #endif
 
 /*============================================================================*/
 /* CPU helpers                                                                */
 /*============================================================================*/
 
+/* Lower 32 bits of the time base (60.75 MHz), used as a clock. */
 static inline u32 mftb(void) {
   u32 r;
   __asm__ volatile("mftb %0" : "=r"(r));
   return r;
 }
+/* Turn off external interrupts (clear MSR[EE]) and return the old MSR, so
+ * the IOS callbacks can't change gcn_data while the game is copying it. */
 static inline u32 isr_disable(void) {
   u32 isr, tmp;
   __asm__ volatile("mfmsr %0; rlwinm %1, %0, 0, 17, 15; mtmsr %1"
                    : "=r"(isr), "=r"(tmp));
   return isr;
 }
+/* Put MSR[EE] back the way isr_disable found it. */
 static inline void isr_restore(u32 isr) {
   u32 tmp;
   __asm__ volatile("mfmsr %0; rlwimi %0, %1, 0, 16, 16; mtmsr %0"
@@ -215,6 +263,11 @@ static void mem_zero(void *p, u32 n) {
 /*============================================================================*/
 /* /dev/usb/hid version 4                                                     */
 /*============================================================================*/
+/* The older IOS HID interface: plain ioctls. GET_DEVICE_CHANGE returns once
+ * the list of attached HID devices changes; each entry starts with its size
+ * in bytes, then the IOS device id, then the USB device descriptor (whose
+ * vendor/product word is entry word 4). Interrupt transfers take a
+ * struct interrupt_msg4. */
 
 #define WUP_028_DESCRIPTOR_SIZE 0x44
 #define WUP_028_ENDPOINT_OUT 0x2
@@ -230,6 +283,7 @@ static void mem_zero(void *p, u32 n) {
 static u32 hid4_devices[HID4_DEVICE_CHANGE_SIZE] IOS_ALIGN;
 #endif
 
+/* v4 interrupt transfer request: device id, endpoint, length, data. */
 struct interrupt_msg4 {
   u8 padding[16];
   u32 device;
@@ -284,6 +338,10 @@ static struct interrupt_msg4 poll_msg4 IOS_ALIGN = {
 /*============================================================================*/
 /* /dev/usb/hid version 5                                                     */
 /*============================================================================*/
+/* The vWii's IOS58 interface: a new device must be attached (ATTACH_FINISH),
+ * resumed (SET_RESUME) and its parameters read before transfers work, and
+ * transfers are ioctlv calls whose first buffer is a 64-byte header that
+ * holds the device id. IOS58 only accepts these buffers in MEM2. */
 
 #define HID5_DEVICE_CHANGE_SIZE 0x20 /* entries */
 #define HID5_TMP_BUFFER_SIZE 0x20    /* words */
@@ -295,6 +353,7 @@ static struct interrupt_msg4 poll_msg4 IOS_ALIGN = {
 #define HID5_IOCTL_INTERRUPT 19
 #define HID5_VERSION 0x00050001
 
+/* One entry of the v5 device list. */
 struct hid5_device {
   u32 id;
   u32 vid_pid;
@@ -340,6 +399,8 @@ static int claim_mem2(void) {
 /*============================================================================*/
 /* Request builders                                                           */
 /*============================================================================*/
+/* Each sends one asynchronous IOS request and returns 0 if IOS accepted it;
+ * the result arrives later in the callback `cb`. */
 
 static s32 onDevUsbInit(s32 ret, void *usr);
 static s32 onDevUsbPoll(s32 ret, void *usr);
@@ -359,6 +420,8 @@ static int sendInit4(ios_cb_t cb) {
 }
 static int sendPoll4(ios_cb_t cb) {
   poll_msg4.device = gcn_adapter_id;
+  /* Write back any dirty cache lines first so they can't overwrite the
+     report IOS is about to put in memory. */
   DCFlushRange(poll_msg_buffer, sizeof(poll_msg_buffer));
   return IOS_IoctlAsync(dev_usb_hid_fd, HID4_IOCTL_INTERRUPT_IN,
                         &poll_msg4, sizeof(poll_msg4), NULL, 0, cb, NULL);
@@ -376,6 +439,7 @@ static int getDeviceChange5(ios_cb_t cb) {
 static int sendAttach5(ios_cb_t cb, void *usr) {
   return IOS_IoctlAsync(dev_usb_hid_fd, HID5_IOCTL_ATTACH_FINISH, NULL, 0, NULL, 0, cb, usr);
 }
+/* v5 SET_RESUME block: device id, 0, 1 (resume). */
 static int sendResume5(ios_cb_t cb) {
   for (int i = 0; i < 8; i++) hid5_buffer[i] = 0;
   hid5_buffer[0] = gcn_adapter_id;
@@ -387,6 +451,7 @@ static int sendParams5(ios_cb_t cb) {
   return IOS_IoctlAsync(dev_usb_hid_fd, HID5_IOCTL_GET_DEVICE_PARAMETERS,
                         hid5_buffer, 0x20, hid5_buffer + 8, 0x60, cb, NULL);
 }
+/* v5 OUT transfer: header (device id at word 16) + the 0x13 command. */
 static int sendInit5(ios_cb_t cb) {
   hid5_argv[0].data = hid5_buffer;
   hid5_argv[0].len = 0x40;
@@ -394,6 +459,8 @@ static int sendInit5(ios_cb_t cb) {
   hid5_argv[1].len = 1;
   return IOS_IoctlvAsync(dev_usb_hid_fd, HID5_IOCTL_INTERRUPT, 2, 0, hid5_argv, cb, NULL);
 }
+/* v5 IN transfer: the reply header uses words 16-31 of hid5_buffer, so it
+   doesn't clobber the OUT header in words 0-15 that rumble reuses. */
 static int sendPoll5(ios_cb_t cb) {
   hid5_poll_argv[0].data = hid5_buffer + 0x10;
   hid5_poll_argv[0].len = 0x40;
@@ -429,6 +496,8 @@ static struct interrupt_msg4 rumble_msg4 IOS_ALIGN = {
 };
 #endif
 
+/* Rumble reply. Each message carries a token; a reply whose token is old
+   (the adapter changed, or we gave up waiting) is ignored. */
 static s32 onRumble(s32 ret, void *usr) {
   if ((u8)(u32)usr != rumble_token || !rumble_inflight) return 0; /* stale */
   rumble_inflight = 0;
@@ -439,6 +508,7 @@ static s32 onRumble(s32 ret, void *usr) {
   return 0;
 }
 
+/* Send 0x11 + one motor byte per port with the states the game wants now. */
 static int sendRumble(void) {
   for (int i = 0; i < GCN_CONTROLLER_COUNT; i++) {
     rumble_pending[i] = rumble_want[i];
@@ -470,6 +540,7 @@ static void rumble_reset(void) {
   rumble_token++;
 }
 
+/* Called before each poll: send rumble if the wanted state changed. */
 static void maybeSendRumble(void) {
   if (rumble_inflight) {
     if (++rumble_stall < RUMBLE_STALL_POLLS) return;
@@ -488,6 +559,7 @@ static void maybeSendRumble(void) {
   else gca_diag[6]++;
 }
 
+/* Next interrupt read, on whichever interface we found. */
 static int sendPoll(void) {
   maybeSendRumble();
   if (version == 5) return sendPoll5(onDevUsbPoll);
@@ -495,6 +567,8 @@ static int sendPoll(void) {
   return -1;
 }
 
+/* Unrecoverable error: record where, stop using the adapter (the game falls
+   back to the real PADRead) and close the device. */
 static void onFatal(int method, s32 err) {
   DIAG_ERR(method, err);
   usb_failed = 1;
@@ -509,6 +583,14 @@ static void onFatal(int method, s32 err) {
 /*============================================================================*/
 /* Callback chain                                                             */
 /*============================================================================*/
+/* Runs in IOS interrupt context, one step per completed request:
+ *   onDevOpen -> onDevGetVersion4 --(v4)--> onDevUsbChange4 --> onDevUsbInit
+ *                                 --(else: claim MEM2)--> onDevGetVersion5
+ *   onDevGetVersion5 -> onDevUsbChange5 -> onDevUsbAttach5 -> onDevUsbResume5
+ *                    -> onDevUsbParams5 -> onDevUsbInit
+ *   onDevUsbInit -> onDevUsbPoll -> onDevUsbPoll -> ... (forever)
+ * The device-change request is re-sent each time it completes, so an adapter
+ * plugged in or out later is noticed. */
 
 static s32 onDevGetVersion4(s32 ret, void *usr);
 static s32 onDevGetVersion5(s32 ret, void *usr);
@@ -518,6 +600,7 @@ static s32 onDevUsbAttach5(s32 ret, void *usr);
 static s32 onDevUsbResume5(s32 ret, void *usr);
 static s32 onDevUsbParams5(s32 ret, void *usr);
 
+/* /dev/usb/hid is open: ask for the v4 version number first. */
 static s32 onDevOpen(s32 fd, void *usr) {
   (void)usr;
   if (fd < 0) { onFatal(1, fd); return 0; }
@@ -528,6 +611,7 @@ static s32 onDevOpen(s32 fd, void *usr) {
   return 0;
 }
 
+/* v4 answers its version; anything else means try v5 (which needs MEM2). */
 static s32 onDevGetVersion4(s32 ret, void *usr) {
   (void)usr;
   if (ret == HID4_VERSION) {
@@ -557,6 +641,7 @@ static s32 onDevGetVersion5(s32 ret, void *usr) {
   return 0;
 }
 
+/* v4 device list changed: walk it for the adapter and start it if new. */
 static s32 onDevUsbChange4(s32 ret, void *usr) {
   (void)usr;
   if (ret >= 0) {
@@ -582,6 +667,7 @@ static s32 onDevUsbChange4(s32 ret, void *usr) {
   return 0;
 }
 
+/* v5 device list changed (ret = number of devices): acknowledge it first. */
 static s32 onDevUsbChange5(s32 ret, void *usr) {
   (void)usr;
   if (ret >= 0) ret = sendAttach5(onDevUsbAttach5, (void *)ret);
@@ -589,6 +675,7 @@ static s32 onDevUsbChange5(s32 ret, void *usr) {
   return 0;
 }
 
+/* v5 list acknowledged: find the adapter and resume it if new. */
 static s32 onDevUsbAttach5(s32 ret, void *vcount) {
   if (ret == 0) {
     int found = 0;
@@ -631,6 +718,7 @@ static s32 onDevUsbParams5(s32 ret, void *usr) {
   return 0;
 }
 
+/* The adapter accepted 0x13: start the endless poll loop. */
 static s32 onDevUsbInit(s32 ret, void *usr) {
   (void)usr;
   if (ret >= 0) { DIAG_STAGE(7); rumble_reset(); poll_errors = 0; ret = sendPoll(); }
@@ -645,6 +733,12 @@ static inline u8 clamp_u8(int v) {
   return (u8)(v < 0 ? 0 : v > 255 ? 255 : v);
 }
 
+/* One adapter report arrived. Layout after the 0x21 byte, 9 bytes per port:
+ *   d[0] status: high nibble 1 = wired controller, 2 = wireless, else none
+ *   d[1] A B X Y Left Right Down Up (bits 0-7)
+ *   d[2] Start Z R L (bits 0-3; R/L are the digital clicks)
+ *   d[3..8] stick X, stick Y, C-stick X, C-stick Y, L analog, R analog
+ * Decode it into gcn_data, then send the next poll. */
 static s32 onDevUsbPoll(s32 ret, void *usr) {
   (void)usr;
   if (ret >= 0) {
@@ -668,6 +762,7 @@ static s32 onDevUsbPoll(s32 ret, void *usr) {
           press_latch[i] = 0;
           continue;
         }
+        /* Adapter bit order -> SDK PAD_BUTTON_* bits. */
         u16 b = 0;
         if (d[1] & 0x01) b |= PAD_BUTTON_A;
         if (d[1] & 0x02) b |= PAD_BUTTON_B;
@@ -698,9 +793,12 @@ static s32 onDevUsbPoll(s32 ret, void *usr) {
           origin_valid[i] = 1;
         }
 
+        /* Remember buttons newly pressed since the last report. */
         press_latch[i] |= b & ~prev_btn[i];
         prev_btn[i] = b;
 
+        /* Analog values relative to the origin; PADStatus sticks are signed
+           with 0 = centre, triggers unsigned with 0 = released. */
         s->button = b;
         s->stickX = clamp_s8((int)d[3] - origin[i][0]);
         s->stickY = clamp_s8((int)d[4] - origin[i][1]);
@@ -735,6 +833,7 @@ static PADStatus last_read[GCN_CONTROLLER_COUNT];
 static inline int absdiff(int a, int b) { return a > b ? a - b : b - a; }
 
 /* Same test the SDK's PADRead uses before calling __VIResetSIIdle. */
+/* (Moving a stick or trigger by 3 or more counts as input.) */
 static int input_changed(const PADStatus *a, const PADStatus *b) {
   if (a->err != b->err || a->button != b->button) return 1;
   return absdiff(a->stickX, b->stickX) >= 3 || absdiff(a->stickY, b->stickY) >= 3 ||
@@ -743,7 +842,8 @@ static int input_changed(const PADStatus *a, const PADStatus *b) {
          absdiff(a->triggerL, b->triggerL) >= 3 || absdiff(a->triggerR, b->triggerR) >= 3;
 }
 
-/* Replaces the `bl PADRead` in gfPadSystem::updateLowGC. */
+/* Replaces the `bl PADRead` in gfPadSystem::updateLowGC, Brawl's once-a-frame
+   GameCube pad read. Same contract as PADRead: fill result[0..3], return 0. */
 u32 gca_PADRead(PADStatus *result) {
   u32 isr = isr_disable();
   if (!started) {
@@ -754,11 +854,13 @@ u32 gca_PADRead(PADStatus *result) {
     if (IOS_OpenAsync(DEV_USB_HID_PATH, 0, onDevOpen, NULL) != 0) onFatal(12, -1);
   }
   gca_diag[5]++;
+  /* Use the adapter only while its reports are fresh. */
   int use_adapter = adapter_live && !usb_failed &&
                     (mftb() - gcn_data_written) <= GCN_TIMEOUT;
   for (int i = 0; i < GCN_CONTROLLER_COUNT; i++) {
     if (use_adapter) {
       result[i] = gcn_data[i];
+      /* Add short taps that were already released again (press_latch). */
       u16 missed = press_latch[i] & ~result[i].button;
       if (missed && result[i].err == PAD_ERR_NONE) {
         result[i].button |= missed;
@@ -793,6 +895,8 @@ void gca_PADControlMotor(s32 chan, u32 cmd) {
   RealPADControlMotor(chan, cmd);
 }
 
+/* If the instruction v at address a is `bl X`, set *dest = X. A `bl` is
+   opcode 18 with AA=0, LK=1 and a signed 26-bit byte offset. */
 static int bl_target(u32 a, u32 v, u32 *dest) {
   if ((v & 0xFC000003) != 0x48000001) return 0;
   s32 off = (s32)(v & 0x03FFFFFC);
@@ -801,6 +905,9 @@ static int bl_target(u32 a, u32 v, u32 *dest) {
   return 1;
 }
 
+/* Rewrite the `bl` at ins to call target (if in range, +-32 MB), then make
+   the CPU see the new instruction: flush the data cache line to memory and
+   drop the stale instruction cache line. */
 static int patch_bl(u32 *ins, u32 target) {
   s32 noff = (s32)(target - (u32)ins);
   if (noff < -0x02000000 || noff >= 0x02000000) return 0;
@@ -820,6 +927,9 @@ static int motor_signature_ok(void) {
   return f[SIZE_PADControlMotor / 4 - 1] == 0x4E800020; /* ends in blr */
 }
 
+/* Scan the game's code for `bl PADControlMotor` and point each at
+   gca_PADControlMotor. All-or-nothing: if the function doesn't look right or
+   there are implausibly many calls, nothing is patched (no rumble). */
 #define MAX_MOTOR_SITES 32
 static void install_rumble(void) {
   if (!motor_signature_ok()) { gca_diag[8] = 0xEE; return; }
@@ -851,6 +961,8 @@ static int leaf_store_only(const u32 *f) {
   }
   return 1;
 }
+/* Enable the screen-dimming reset only if both functions pass the check above
+   and differ only in which variable they write. */
 static void install_si_idle(void) {
   const u32 *si = (const u32 *)ADDR_VIResetSIIdle;
   const u32 *rf = (const u32 *)ADDR_VIResetRFIdle;
@@ -875,6 +987,9 @@ void gca_install(void) {
   ios_bufs_init();
 #endif
 
+  /* Find the `bl PADRead` (or our own `bl gca_PADRead` if it is already
+     patched) inside updateLowGC and point it at gca_PADRead. Same decoding
+     as bl_target / patch_bl, written out here. */
   u32 target = (u32)gca_PADRead;
   int patched = 0;
   for (u32 a = ADDR_updateLowGC; a < ADDR_updateLowGC + SIZE_updateLowGC; a += 4) {
